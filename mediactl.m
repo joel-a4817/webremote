@@ -119,6 +119,7 @@ static void printUsage(void) {
         "  mediactl now-playing-json\n"
         "  mediactl airplay-rt4817\n"
         "  mediactl restart-music\n"
+        "  mediactl resume\n"
     );
 }
 
@@ -354,6 +355,35 @@ static int sendMediaRemoteCommand(
     dlclose(framework);
     return 0;
 }
+
+static int togglePlaybackAtFullVolume(void) {
+    MPMusicPlayerController *player =
+        [MPMusicPlayerController
+            systemMusicPlayer];
+
+    if (
+        player.playbackState ==
+        MPMusicPlaybackStatePlaying
+    ) {
+        return sendMediaRemoteCommand(
+            1,
+            "pause"
+        );
+    }
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
+    player.volume = 1.0f;
+
+#pragma clang diagnostic pop
+
+    return sendMediaRemoteCommand(
+        0,
+        "play at 100% volume"
+    );
+}
+
 
 static NSArray<MPMediaPlaylist *> *getPlaylists(void) {
     MPMediaQuery *query =
@@ -1114,6 +1144,30 @@ static int restartMusicInstance(void) {
 }
 
 
+
+static int resumeAtFullVolume(void) {
+    MPMusicPlayerController *player =
+        [MPMusicPlayerController
+            systemMusicPlayer];
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
+    player.volume = 1.0f;
+
+#pragma clang diagnostic pop
+
+    [player play];
+
+    printf(
+        "Set iPad Music volume to 100%% "
+        "and resumed playback\n"
+    );
+
+    return 0;
+}
+
+
 int main(int argc, char *argv[]) {
     @autoreleasepool {
         if (argc < 2) {
@@ -1243,6 +1297,13 @@ int main(int argc, char *argv[]) {
 
         if (
             [argument
+                isEqualToString:@"resume"]
+        ) {
+            return resumeAtFullVolume();
+        }
+
+        if (
+            [argument
                 isEqualToString:
                     @"airplay-rt4817"]
         ) {
@@ -1257,10 +1318,16 @@ int main(int argc, char *argv[]) {
             return restartMusicInstance();
         }
 
+        if (
+            [argument
+                isEqualToString:@"toggle"]
+        ) {
+            return togglePlaybackAtFullVolume();
+        }
+
         NSDictionary<NSString *, NSNumber *> *commands = @{
             @"play": @0,
             @"pause": @1,
-            @"toggle": @2,
             @"next": @4,
             @"previous": @5
         };

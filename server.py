@@ -11,7 +11,6 @@ PORT = 8765
 TRANSPORT_COMMANDS = {
     "/api/play": ["play"],
     "/api/pause": ["pause"],
-    "/api/toggle": ["toggle"],
     "/api/next": ["next"],
     "/api/previous": ["previous"],
 }
@@ -313,6 +312,15 @@ button:active {
   line-height: 1.25;
 }
 
+#resume-music {
+  background:
+    linear-gradient(
+      135deg,
+      #28b96f,
+      #3b8cff
+    );
+}
+
 #connect-airplay {
   background:
     linear-gradient(
@@ -408,6 +416,7 @@ button:active {
     </div>
 
     <div class="system-controls">
+
       <button
         id="connect-airplay"
         class="system-button"
@@ -1015,6 +1024,43 @@ def execute(arguments):
     )
 
 
+
+def execute_toggle():
+    state = execute(
+        ["now-playing-json"]
+    )
+
+    if state.returncode != 0:
+        return state
+
+    try:
+        now_playing = json.loads(
+            state.stdout
+        )
+    except json.JSONDecodeError:
+        return run(
+            [
+                MEDIACTL,
+                "resume",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+    if now_playing.get(
+        "playing",
+        False
+    ):
+        return execute(
+            ["pause"]
+        )
+
+    return execute(
+        ["resume"]
+    )
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_data(self, status, content_type, data):
         self.send_response(status)
@@ -1137,6 +1183,32 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path == "/api/toggle":
+            result = execute_toggle()
+
+            succeeded = (
+                result.returncode == 0
+            )
+
+            self.send_json(
+                200 if succeeded else 500,
+                {
+                    "ok": succeeded,
+                    "stdout":
+                        result.stdout.strip(),
+                    "error": (
+                        ""
+                        if succeeded
+                        else (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "Toggle failed"
+                        )
+                    )
+                }
+            )
+            return
 
         if path in TRANSPORT_COMMANDS:
             result = execute(
