@@ -1,0 +1,75 @@
+{
+  "$version": 100000,
+  "$archiver": "NSKeyedArchiver",
+  "$top": {
+    "root": {
+      "$uid": 1
+    }
+  },
+  "$objects": [
+    "$null",
+    {
+      "request": {
+        "$uid": 2
+      },
+      "$class": {
+        "$uid": 8
+      }
+    },
+    {
+      "$class": {
+        "$uid": 7
+      },
+      "protobuf": {
+        "$uid": 3
+      }
+    },
+    {
+      "data": {
+        "$uid": 4
+      },
+      "$class": {
+        "$uid": 6
+      }
+    },
+    {
+      "NS.data": {
+        "$bytesHex": "0a7a0a19456e64706f696e742e6164644f757470757444657669636573122441383942343842362d333630442d344532302d393033332d3044304133393339464245421a2d696e2d766964656f2f43434532393532462d383937312d343644432d383037442d383635313935433537393439202128a2db808303300010011a2430376233323835382d313961642d343437632d383938632d3133643766306561303766652000300038004000",
+        "$length": 172
+      },
+      "$class": {
+        "$uid": 5
+      }
+    },
+    {
+      "$classname": "NSMutableData",
+      "$classes": [
+        "NSMutableData",
+        "NSData",
+        "NSObject"
+      ]
+    },
+    {
+      "$classname": "_MRGroupTopologyModificationRequestProtobuf",
+      "$classes": [
+        "_MRGroupTopologyModificationRequestProtobuf",
+        "PBCodable",
+        "NSObject"
+      ]
+    },
+    {
+      "$classname": "MRGroupTopologyModificationRequest",
+      "$classes": [
+        "MRGroupTopologyModificationRequest",
+        "NSObject"
+      ]
+    },
+    {
+      "$classname": "MRAVOutputContextModification",
+      "$classes": [
+        "MRAVOutputContextModification",
+        "NSObject"
+      ]
+    }
+  ]
+}

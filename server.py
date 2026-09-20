@@ -295,6 +295,48 @@ button:active {
   font-weight: 700;
 }
 
+.system-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 11px;
+  margin-top: 15px;
+}
+
+.system-button {
+  min-height: 58px;
+  padding: 12px 14px;
+
+  border-radius: 19px;
+
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+#connect-airplay {
+  background:
+    linear-gradient(
+      135deg,
+      #2f8cff,
+      #765cff
+    );
+}
+
+#restart-music {
+  background:
+    linear-gradient(
+      135deg,
+      #ee6a36,
+      #d83e63
+    );
+}
+
+.system-button:disabled {
+  opacity: .55;
+  cursor: default;
+  transform: none;
+}
+
 #status {
   min-height: 24px;
   margin-top: 17px;
@@ -365,6 +407,24 @@ button:active {
       </button>
     </div>
 
+    <div class="system-controls">
+      <button
+        id="connect-airplay"
+        class="system-button"
+        type="button"
+      >
+        Connect AirPlay
+      </button>
+
+      <button
+        id="restart-music"
+        class="system-button"
+        type="button"
+      >
+        Restart Music
+      </button>
+    </div>
+
     <div class="section-title">Playlists</div>
 
     <div
@@ -428,6 +488,16 @@ const currentDetails =
 
 const toggleButton =
   document.querySelector("#toggle");
+
+const connectAirPlayButton =
+  document.querySelector(
+    "#connect-airplay"
+  );
+
+const restartMusicButton =
+  document.querySelector(
+    "#restart-music"
+  );
 
 const ICONS = {
   play: `
@@ -588,6 +658,50 @@ async function sendTransport(command) {
 
   } catch (error) {
     setStatus(error.message);
+  }
+}
+
+async function runSystemAction(
+  button,
+  endpoint,
+  workingLabel,
+  successLabel
+) {
+  if (button.disabled) {
+    return;
+  }
+
+  const normalLabel =
+    button.textContent;
+
+  button.disabled = true;
+  button.textContent = workingLabel;
+
+  try {
+    const result =
+      await readJSON(
+        endpoint,
+        {
+          method: "POST"
+        }
+      );
+
+    setStatus(
+      result.message || successLabel
+    );
+
+    setTimeout(
+      updateNowPlaying,
+      700
+    );
+
+  } catch (error) {
+    setStatus(error.message);
+
+  } finally {
+    button.disabled = false;
+    button.textContent =
+      normalLabel;
   }
 }
 
@@ -855,6 +969,30 @@ for (
   );
 }
 
+connectAirPlayButton.addEventListener(
+  "click",
+  () => {
+    runSystemAction(
+      connectAirPlayButton,
+      "/api/airplay/connect",
+      "Connecting…",
+      "Connected to rt4817"
+    );
+  }
+);
+
+restartMusicButton.addEventListener(
+  "click",
+  () => {
+    runSystemAction(
+      restartMusicButton,
+      "/api/music/restart",
+      "Restarting…",
+      "Music restarted"
+    );
+  }
+);
+
 loadPlaylists();
 updateNowPlaying();
 
@@ -1011,6 +1149,72 @@ class Handler(BaseHTTPRequestHandler):
                     "ok": result.returncode == 0,
                     "stdout": result.stdout.strip(),
                     "error": result.stderr.strip()
+                }
+            )
+            return
+
+        if path == "/api/airplay/connect":
+            result = execute(
+                ["airplay-rt4817"]
+            )
+
+            succeeded = (
+                result.returncode == 0
+            )
+
+            self.send_json(
+                200 if succeeded else 500,
+                {
+                    "ok": succeeded,
+                    "message": (
+                        "Connected to rt4817"
+                        if succeeded
+                        else ""
+                    ),
+                    "stdout":
+                        result.stdout.strip(),
+                    "error": (
+                        ""
+                        if succeeded
+                        else (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "AirPlay connection failed"
+                        )
+                    )
+                }
+            )
+            return
+
+        if path == "/api/music/restart":
+            result = execute(
+                ["restart-music"]
+            )
+
+            succeeded = (
+                result.returncode == 0
+            )
+
+            self.send_json(
+                200 if succeeded else 500,
+                {
+                    "ok": succeeded,
+                    "message": (
+                        "Music restarted"
+                        if succeeded
+                        else ""
+                    ),
+                    "stdout":
+                        result.stdout.strip(),
+                    "error": (
+                        ""
+                        if succeeded
+                        else (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "Music restart failed"
+                        )
+                    )
                 }
             )
             return

@@ -2,6 +2,96 @@
 #import <MediaPlayer/MediaPlayer.h>
 #import <dispatch/dispatch.h>
 #import <dlfcn.h>
+/*
+ * The Theos SDK does not ship xpc/xpc.h.
+ * Declare only the libxpc interfaces used here.
+ */
+typedef void *xpc_object_t;
+typedef xpc_object_t xpc_connection_t;
+
+struct _xpc_type_s;
+typedef const struct _xpc_type_s *xpc_type_t;
+
+typedef void (^xpc_handler_t)(
+    xpc_object_t object
+);
+
+extern const struct _xpc_type_s
+    _xpc_type_error;
+
+#define XPC_TYPE_ERROR \
+    ((xpc_type_t)&_xpc_type_error)
+
+extern xpc_connection_t
+xpc_connection_create_mach_service(
+    const char *name,
+    dispatch_queue_t targetQueue,
+    uint64_t flags
+);
+
+extern void
+xpc_connection_set_event_handler(
+    xpc_connection_t connection,
+    xpc_handler_t handler
+);
+
+extern void
+xpc_connection_resume(
+    xpc_connection_t connection
+);
+
+extern xpc_object_t
+xpc_dictionary_create(
+    const char *const *keys,
+    const xpc_object_t *values,
+    size_t count
+);
+
+extern void
+xpc_dictionary_set_data(
+    xpc_object_t dictionary,
+    const char *key,
+    const void *bytes,
+    size_t length
+);
+
+extern void
+xpc_dictionary_set_string(
+    xpc_object_t dictionary,
+    const char *key,
+    const char *value
+);
+
+extern void
+xpc_dictionary_set_uint64(
+    xpc_object_t dictionary,
+    const char *key,
+    uint64_t value
+);
+
+extern xpc_object_t
+xpc_connection_send_message_with_reply_sync(
+    xpc_connection_t connection,
+    xpc_object_t message
+);
+
+extern xpc_type_t
+xpc_get_type(
+    xpc_object_t object
+);
+
+extern char *
+xpc_copy_description(
+    xpc_object_t object
+);
+#import <spawn.h>
+#import <string.h>
+#import <sys/wait.h>
+#import <unistd.h>
+
+#import "rt4817_request.h"
+
+extern char **environ;
 
 typedef uint8_t (*MRSendCommandWithReplyFunction)(
     uint32_t command,
@@ -27,6 +117,8 @@ static void printUsage(void) {
         "  mediactl playlist-songs-json \"Playlist Name\"\n"
         "  mediactl song <persistent-id> \"Playlist Name\"\n"
         "  mediactl now-playing-json\n"
+        "  mediactl airplay-rt4817\n"
+        "  mediactl restart-music\n"
     );
 }
 
@@ -735,6 +827,293 @@ static NSString *joinArguments(
     return [parts componentsJoinedByString:@" "];
 }
 
+
+static int sendRt4817RouteRequest(void) {
+    const char serviceName[] =
+        "com.apple.mediaremoted.xpc";
+
+    const char contextUID[] =
+        "577E1BCA-2D9B-41C2-"
+        "A8F8-C515CE8072D4";
+
+    const uint64_t messageID =
+        216172782113783848ULL;
+
+    NSString *customID =
+        NSUUID.UUID.UUIDString
+            .uppercaseString;
+
+    dispatch_queue_t queue =
+        dispatch_get_global_queue(
+            QOS_CLASS_USER_INITIATED,
+            0
+        );
+
+    xpc_connection_t connection =
+        xpc_connection_create_mach_service(
+            serviceName,
+            queue,
+            0
+        );
+
+    if (connection == NULL) {
+        fprintf(
+            stderr,
+            "Could not connect to "
+            "mediaremoted.\n"
+        );
+
+        return 1;
+    }
+
+    xpc_connection_set_event_handler(
+        connection,
+        ^(xpc_object_t event) {
+        }
+    );
+
+    xpc_connection_resume(
+        connection
+    );
+
+    xpc_object_t message =
+        xpc_dictionary_create(
+            NULL,
+            NULL,
+            0
+        );
+
+    if (message == NULL) {
+        fprintf(
+            stderr,
+            "Could not create the "
+            "AirPlay request.\n"
+        );
+
+        return 1;
+    }
+
+    xpc_dictionary_set_data(
+        message,
+        "MRXPC_CONTEXT_MODIFICATION_DATA_KEY",
+        kRt4817ModificationPayload,
+        kRt4817ModificationPayloadLength
+    );
+
+    xpc_dictionary_set_string(
+        message,
+        "MRXPC_ROUTING_CONTEXT_UID_KEY",
+        contextUID
+    );
+
+    xpc_dictionary_set_uint64(
+        message,
+        "MRXPC_MESSAGE_ID_KEY",
+        messageID
+    );
+
+    xpc_dictionary_set_string(
+        message,
+        "MRXPC_MESSAGE_CUSTOM_ID_KEY",
+        customID.UTF8String
+    );
+
+    xpc_object_t reply =
+        xpc_connection_send_message_with_reply_sync(
+            connection,
+            message
+        );
+
+    if (reply == NULL) {
+        fprintf(
+            stderr,
+            "mediaremoted returned no reply.\n"
+        );
+
+        return 1;
+    }
+
+    if (
+        xpc_get_type(reply)
+        == XPC_TYPE_ERROR
+    ) {
+        char *description =
+            xpc_copy_description(
+                reply
+            );
+
+        fprintf(
+            stderr,
+            "mediaremoted rejected "
+            "the request: %s\n",
+            description != NULL
+                ? description
+                : "unknown XPC error"
+        );
+
+        if (
+            description != NULL
+        ) {
+            free(description);
+        }
+
+        return 1;
+    }
+
+    char *description =
+        xpc_copy_description(
+            reply
+        );
+
+    printf(
+        "AirPlay request sent "
+        "to rt4817\n"
+    );
+
+    printf(
+        "Context: %s\n",
+        contextUID
+    );
+
+    printf(
+        "Device UID: "
+        "07b32858-19ad-447c-898c-"
+        "13d7f0ea07fe\n"
+    );
+
+    printf(
+        "Custom ID: %s\n",
+        customID.UTF8String
+    );
+
+    if (
+        description != NULL
+    ) {
+        printf(
+            "Reply: %s\n",
+            description
+        );
+
+        free(description);
+    }
+
+    return 0;
+}
+
+
+static int runExecutable(
+    const char *executable,
+    char *const arguments[]
+) {
+    pid_t processID = 0;
+
+    int result =
+        posix_spawn(
+            &processID,
+            executable,
+            NULL,
+            NULL,
+            arguments,
+            environ
+        );
+
+    if (result != 0) {
+        fprintf(
+            stderr,
+            "Could not run %s: %s\n",
+            executable,
+            strerror(result)
+        );
+
+        return result;
+    }
+
+    int status = 0;
+
+    if (
+        waitpid(
+            processID,
+            &status,
+            0
+        ) < 0
+    ) {
+        perror("waitpid");
+        return 1;
+    }
+
+    if (
+        !WIFEXITED(status)
+    ) {
+        return 1;
+    }
+
+    return WEXITSTATUS(status);
+}
+
+
+static int restartMusicInstance(void) {
+    char *killArguments[] = {
+        "killall",
+        "-9",
+        "Music",
+        "MusicUIService",
+        NULL
+    };
+
+    int killResult =
+        runExecutable(
+            "/usr/bin/killall",
+            killArguments
+        );
+
+    if (killResult != 0) {
+        runExecutable(
+            "/var/jb/usr/bin/killall",
+            killArguments
+        );
+    }
+
+    usleep(700000);
+
+    char *openArguments[] = {
+        "uiopen",
+        "music://",
+        NULL
+    };
+
+    int openResult =
+        runExecutable(
+            "/usr/bin/uiopen",
+            openArguments
+        );
+
+    if (openResult != 0) {
+        openResult =
+            runExecutable(
+                "/var/jb/usr/bin/uiopen",
+                openArguments
+            );
+    }
+
+    if (openResult != 0) {
+        fprintf(
+            stderr,
+            "Music was killed but could "
+            "not be reopened.\n"
+        );
+
+        return 1;
+    }
+
+    printf(
+        "Music and MusicUIService "
+        "restarted\n"
+    );
+
+    return 0;
+}
+
+
 int main(int argc, char *argv[]) {
     @autoreleasepool {
         if (argc < 2) {
@@ -860,6 +1239,22 @@ int main(int argc, char *argv[]) {
                 joinArguments(argc, argv, 2);
 
             return playPlaylist(requestedName);
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"airplay-rt4817"]
+        ) {
+            return sendRt4817RouteRequest();
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"restart-music"]
+        ) {
+            return restartMusicInstance();
         }
 
         NSDictionary<NSString *, NSNumber *> *commands = @{
