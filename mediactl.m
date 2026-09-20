@@ -117,6 +117,7 @@ static void printUsage(void) {
         "  mediactl playlist-songs-json \"Playlist Name\"\n"
         "  mediactl song <persistent-id> \"Playlist Name\"\n"
         "  mediactl now-playing-json\n"
+        "  mediactl lock-device\n"
         "  mediactl airplay-rt4817\n"
         "  mediactl restart-music\n"
         "  mediactl resume\n"
@@ -1168,6 +1169,26 @@ static int resumeAtFullVolume(void) {
 }
 
 
+
+static int lockDeviceOnly(void) {
+    CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR(
+            "com.joel.mediactl.lock-device"
+        ),
+        NULL,
+        NULL,
+        true
+    );
+
+    printf(
+        "SpringBoard lock request sent\n"
+    );
+
+    return 0;
+}
+
+
 int main(int argc, char *argv[]) {
     @autoreleasepool {
         if (argc < 2) {
@@ -1323,6 +1344,13 @@ int main(int argc, char *argv[]) {
                 isEqualToString:@"toggle"]
         ) {
             return togglePlaybackAtFullVolume();
+        }
+
+        if (
+            [argument
+                isEqualToString:@"lock-device"]
+        ) {
+            return lockDeviceOnly();
         }
 
         NSDictionary<NSString *, NSNumber *> *commands = @{

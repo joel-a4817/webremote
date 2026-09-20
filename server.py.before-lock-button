@@ -339,17 +339,6 @@ button:active {
     );
 }
 
-#lock-device {
-  grid-column: 1 / -1;
-
-  background:
-    linear-gradient(
-      135deg,
-      #343746,
-      #181a22
-    );
-}
-
 .system-button:disabled {
   opacity: .55;
   cursor: default;
@@ -443,14 +432,6 @@ button:active {
       >
         Restart Music
       </button>
-
-      <button
-        id="lock-device"
-        class="system-button"
-        type="button"
-      >
-        Lock iPad
-      </button>
     </div>
 
     <div class="section-title">Playlists</div>
@@ -525,11 +506,6 @@ const connectAirPlayButton =
 const restartMusicButton =
   document.querySelector(
     "#restart-music"
-  );
-
-const lockDeviceButton =
-  document.querySelector(
-    "#lock-device"
   );
 
 const ICONS = {
@@ -1026,18 +1002,6 @@ restartMusicButton.addEventListener(
   }
 );
 
-lockDeviceButton.addEventListener(
-  "click",
-  () => {
-    runSystemAction(
-      lockDeviceButton,
-      "/api/device/lock",
-      "Locking…",
-      "Lock request sent"
-    );
-  }
-);
-
 loadPlaylists();
 updateNowPlaying();
 
@@ -1288,39 +1252,6 @@ class Handler(BaseHTTPRequestHandler):
                             result.stderr.strip()
                             or result.stdout.strip()
                             or "AirPlay connection failed"
-                        )
-                    )
-                }
-            )
-            return
-
-        if path == "/api/device/lock":
-            result = execute(
-                ["lock-device"]
-            )
-
-            succeeded = (
-                result.returncode == 0
-            )
-
-            self.send_json(
-                200 if succeeded else 500,
-                {
-                    "ok": succeeded,
-                    "message": (
-                        "Lock request sent"
-                        if succeeded
-                        else ""
-                    ),
-                    "stdout":
-                        result.stdout.strip(),
-                    "error": (
-                        ""
-                        if succeeded
-                        else (
-                            result.stderr.strip()
-                            or result.stdout.strip()
-                            or "Could not lock iPad"
                         )
                     )
                 }
