@@ -1,17 +1,17 @@
 {
   "event": "outbound-airplay-request",
-  "timestamp": "2026-09-21T03:18:39.051Z",
-  "pid": 458,
+  "timestamp": "2026-09-21T07:15:51.280Z",
+  "pid": 3125,
   "threadID": 259,
   "api": "xpc_connection_send_message_with_reply",
-  "connection": "<connection: 0x3019304b0> { name = com.apple.mediaremoted.xpc, listener = false, pid = 42, euid = 501, egid = 501, asid = 0 }",
-  "message": "<dictionary: 0x300276460> { count = 4, transaction: 0, voucher = 0x0, contents =\n\t\"MRXPC_CONTEXT_MODIFICATION_DATA_KEY\" => <data: 0x30335bb40>: { length = 815 bytes, contents = 0x62706c6973743030d4010203040506070a58247665727369... }\n\t\"MRXPC_ROUTING_CONTEXT_UID_KEY\" => <string: 0x30285f9c0> { length = 36, contents = \"577E1BCA-2D9B-41C2-A8F8-C515CE8072D4\" }\n\t\"MRXPC_MESSAGE_ID_KEY\" => <uint64: 0x3026497e0>: 216172782113783848\n\t\"MRXPC_MESSAGE_CUSTOM_ID_KEY\" => <string: 0x30285f7e0> { length = 36, contents = \"479A6967-4CD4-4B49-9047-13BA6753234E\" }\n}",
+  "connection": "<connection: 0x3036785a0> { name = com.apple.mediaremoted.xpc, listener = false, pid = 42, euid = 501, egid = 501, asid = 0 }",
+  "message": "<dictionary: 0x302d28fc0> { count = 4, transaction: 0, voucher = 0x0, contents =\n\t\"MRXPC_CONTEXT_MODIFICATION_DATA_KEY\" => <data: 0x301c73900>: { length = 796 bytes, contents = 0x62706c6973743030d4010203040506070a58247665727369... }\n\t\"MRXPC_ROUTING_CONTEXT_UID_KEY\" => <string: 0x300725dd0> { length = 36, contents = \"577E1BCA-2D9B-41C2-A8F8-C515CE8072D4\" }\n\t\"MRXPC_MESSAGE_ID_KEY\" => <uint64: 0x3009fbc40>: 216172782113783848\n\t\"MRXPC_MESSAGE_CUSTOM_ID_KEY\" => <string: 0x3007266a0> { length = 36, contents = \"6186A9CE-C000-4D3F-9062-2F959A707980\" }\n}",
   "messageID": "216172782113783848",
-  "customID": "479A6967-4CD4-4B49-9047-13BA6753234E",
+  "customID": "6186A9CE-C000-4D3F-9062-2F959A707980",
   "routingContextUID": "577E1BCA-2D9B-41C2-A8F8-C515CE8072D4",
   "modificationData": {
-    "length": 815,
-    "sha256": "b61d9331472db0ff273938ff836b14e08bb88f504e4672b8aedeb0162d4eb518"
+    "length": 796,
+    "sha256": "37f1b02b6721864e8603f6427166ed332ca58320c68fb1220f67818d22eb5924"
   },
   "stack": [
     {

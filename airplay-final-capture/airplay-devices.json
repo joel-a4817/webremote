@@ -2,15 +2,15 @@
   "devices": [
     {
       "name": "rt4817",
-      "uid": "69a7a36c-80fd-4053-abb3-f669dc934b87",
+      "uid": "07b32858-19ad-447c-898c-13d7f0ea07fe",
       "pickable": true,
       "local": false
     },
     {
-      "name": "Speaker",
-      "uid": "Speaker",
+      "name": "Samsung Q80 Series",
+      "uid": "4C:C9:5E:D9:9E:B3",
       "pickable": true,
-      "local": true
+      "local": false
     }
   ]
 }
