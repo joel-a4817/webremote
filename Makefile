@@ -14,13 +14,19 @@ mediactl_INSTALL_PATH = /Applications/MediaCtl.app
 
 include $(THEOS_MAKE_PATH)/tool.mk
 
-TWEAK_NAME = MediaCtlLock
+TWEAK_NAME = MediaCtlLock MediaCtlRoutes
 
 MediaCtlLock_FILES = Tweak.x
 MediaCtlLock_CFLAGS = -fobjc-arc
 MediaCtlLock_FRAMEWORKS = Foundation CoreFoundation
 
+MediaCtlRoutes_FILES = AirPlayRoutes.x
+MediaCtlRoutes_CFLAGS = -fobjc-arc
+MediaCtlRoutes_FRAMEWORKS = Foundation
+
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 after-install::
 	install.exec "killall -9 SpringBoard"
+
+

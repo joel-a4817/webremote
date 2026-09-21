@@ -119,6 +119,9 @@ static void printUsage(void) {
         "  mediactl now-playing-json\n"
         "  mediactl lock-device\n"
         "  mediactl airplay-rt4817\n"
+        "  mediactl airplay-devices-json\n"
+        "  mediactl airplay-connect <uid> [name]\n"
+        "  mediactl airplay-set-default <uid> [name]\n"
         "  mediactl restart-music\n"
         "  mediactl resume\n"
     );
@@ -859,7 +862,366 @@ static NSString *joinArguments(
 }
 
 
-static int sendRt4817RouteRequest(void) {
+static NSString *const
+AirPlayPreferencesDomain =
+    @"com.joel.mediactl-airplay";
+
+
+static NSString *const
+OriginalAirPlayUID =
+    @"07b32858-19ad-447c-"
+    @"898c-13d7f0ea07fe";
+
+
+static NSString *const
+OriginalAirPlayName =
+    @"rt4817";
+
+
+static NSUserDefaults *
+airPlayPreferences(void) {
+    return [
+        [NSUserDefaults alloc]
+        initWithSuiteName:
+            AirPlayPreferencesDomain
+    ];
+}
+
+
+static BOOL validAirPlayUID(
+    NSString *uid
+) {
+    if (uid.length != 36) {
+        return NO;
+    }
+
+    NSUUID *value =
+        [[NSUUID alloc]
+            initWithUUIDString:
+                uid];
+
+    return value != nil;
+}
+
+
+static NSString *
+defaultAirPlayUID(void) {
+    NSString *uid =
+        [
+            airPlayPreferences()
+            stringForKey:
+                @"defaultUID"
+        ];
+
+    if (!validAirPlayUID(uid)) {
+        return OriginalAirPlayUID;
+    }
+
+    return uid;
+}
+
+
+static NSString *
+defaultAirPlayName(void) {
+    NSString *name =
+        [
+            airPlayPreferences()
+            stringForKey:
+                @"defaultName"
+        ];
+
+    if (name.length == 0) {
+        return OriginalAirPlayName;
+    }
+
+    return name;
+}
+
+
+static int printAirPlayDevicesJSON(void) {
+    NSUserDefaults *preferences =
+        airPlayPreferences();
+
+    NSArray *storedDevices =
+        [preferences
+            arrayForKey:
+                @"devices"];
+
+    if (storedDevices == nil) {
+        storedDevices = @[];
+    }
+
+    NSString *defaultUID =
+        defaultAirPlayUID();
+
+    NSMutableArray *devices =
+        [NSMutableArray array];
+
+    for (
+        NSDictionary *stored
+        in storedDevices
+    ) {
+        if (
+            ![stored
+                isKindOfClass:
+                    [NSDictionary class]]
+        ) {
+            continue;
+        }
+
+        NSString *uid =
+            stored[@"uid"];
+
+        NSString *name =
+            stored[@"name"];
+
+        if (
+            !validAirPlayUID(uid) ||
+            name.length == 0
+        ) {
+            continue;
+        }
+
+        [devices addObject:@{
+            @"name":
+                name,
+            @"uid":
+                uid,
+            @"default":
+                @(
+                    [uid
+                        isEqualToString:
+                            defaultUID]
+                )
+        }];
+    }
+
+    printJSONObject(@{
+        @"devices":
+            devices,
+        @"default": @{
+            @"name":
+                defaultAirPlayName(),
+            @"uid":
+                defaultUID
+        }
+    });
+
+    return 0;
+}
+
+
+static int setDefaultAirPlayDevice(
+    NSString *uid,
+    NSString *name
+) {
+    if (!validAirPlayUID(uid)) {
+        fprintf(
+            stderr,
+            "Invalid AirPlay device UID\n"
+        );
+
+        return 2;
+    }
+
+    if (name.length == 0) {
+        name = uid;
+    }
+
+    NSUserDefaults *preferences =
+        airPlayPreferences();
+
+    [preferences
+        setObject:uid
+        forKey:@"defaultUID"];
+
+    [preferences
+        setObject:name
+        forKey:@"defaultName"];
+
+    if (![preferences synchronize]) {
+        fprintf(
+            stderr,
+            "Could not save AirPlay default\n"
+        );
+
+        return 1;
+    }
+
+    printJSONObject(@{
+        @"name":
+            name,
+        @"uid":
+            uid,
+        @"default":
+            @YES
+    });
+
+    return 0;
+}
+
+
+static NSData *routePayloadForUID(
+    NSString *uid,
+    NSError **error
+) {
+    if (!validAirPlayUID(uid)) {
+        if (error != NULL) {
+            *error = [
+                NSError
+                errorWithDomain:
+                    @"MediaCtlAirPlay"
+                code:
+                    1
+                userInfo: @{
+                    NSLocalizedDescriptionKey:
+                        @"Invalid AirPlay device UID"
+                }
+            ];
+        }
+
+        return nil;
+    }
+
+    NSData *originalUIDData =
+        [OriginalAirPlayUID
+            dataUsingEncoding:
+                NSUTF8StringEncoding];
+
+    NSData *replacementUIDData =
+        [uid
+            dataUsingEncoding:
+                NSUTF8StringEncoding];
+
+    NSData *template =
+        [NSData
+            dataWithBytes:
+                kRt4817ModificationPayload
+            length:
+                kRt4817ModificationPayloadLength];
+
+    NSRange fullRange =
+        NSMakeRange(
+            0,
+            template.length
+        );
+
+    NSRange targetRange =
+        [template
+            rangeOfData:
+                originalUIDData
+            options:
+                0
+            range:
+                fullRange];
+
+    if (
+        targetRange.location ==
+        NSNotFound
+    ) {
+        if (error != NULL) {
+            *error = [
+                NSError
+                errorWithDomain:
+                    @"MediaCtlAirPlay"
+                code:
+                    2
+                userInfo: @{
+                    NSLocalizedDescriptionKey:
+                        @"AirPlay template UID "
+                        @"was not found"
+                }
+            ];
+        }
+
+        return nil;
+    }
+
+    NSUInteger secondStart =
+        NSMaxRange(targetRange);
+
+    if (
+        secondStart <
+        template.length
+    ) {
+        NSRange remainingRange =
+            NSMakeRange(
+                secondStart,
+                template.length -
+                    secondStart
+            );
+
+        NSRange duplicateRange =
+            [template
+                rangeOfData:
+                    originalUIDData
+                options:
+                    0
+                range:
+                    remainingRange];
+
+        if (
+            duplicateRange.location !=
+            NSNotFound
+        ) {
+            if (error != NULL) {
+                *error = [
+                    NSError
+                    errorWithDomain:
+                        @"MediaCtlAirPlay"
+                    code:
+                        3
+                    userInfo: @{
+                        NSLocalizedDescriptionKey:
+                            @"AirPlay template "
+                            @"contains multiple UIDs"
+                    }
+                ];
+            }
+
+            return nil;
+        }
+    }
+
+    NSMutableData *payload =
+        [template mutableCopy];
+
+    [payload
+        replaceBytesInRange:
+            targetRange
+        withBytes:
+            replacementUIDData.bytes
+        length:
+            replacementUIDData.length];
+
+    return payload;
+}
+
+
+static int sendAirPlayRouteRequest(
+    NSString *uid,
+    NSString *name
+) {
+    NSError *payloadError = nil;
+
+    NSData *payload =
+        routePayloadForUID(
+            uid,
+            &payloadError
+        );
+
+    if (payload == nil) {
+        fprintf(
+            stderr,
+            "%s\n",
+            payloadError
+                .localizedDescription
+                .UTF8String
+        );
+
+        return 1;
+    }
+
     const char serviceName[] =
         "com.apple.mediaremoted.xpc";
 
@@ -927,8 +1289,8 @@ static int sendRt4817RouteRequest(void) {
     xpc_dictionary_set_data(
         message,
         "MRXPC_CONTEXT_MODIFICATION_DATA_KEY",
-        kRt4817ModificationPayload,
-        kRt4817ModificationPayloadLength
+        payload.bytes,
+        payload.length
     );
 
     xpc_dictionary_set_string(
@@ -982,53 +1344,33 @@ static int sendRt4817RouteRequest(void) {
                 : "unknown XPC error"
         );
 
-        if (
-            description != NULL
-        ) {
+        if (description != NULL) {
             free(description);
         }
 
         return 1;
     }
 
-    char *description =
-        xpc_copy_description(
-            reply
-        );
-
-    printf(
-        "AirPlay request sent "
-        "to rt4817\n"
-    );
-
-    printf(
-        "Context: %s\n",
-        contextUID
-    );
-
-    printf(
-        "Device UID: "
-        "07b32858-19ad-447c-898c-"
-        "13d7f0ea07fe\n"
-    );
-
-    printf(
-        "Custom ID: %s\n",
-        customID.UTF8String
-    );
-
-    if (
-        description != NULL
-    ) {
-        printf(
-            "Reply: %s\n",
-            description
-        );
-
-        free(description);
-    }
+    printJSONObject(@{
+        @"name":
+            name.length > 0
+                ? name
+                : uid,
+        @"uid":
+            uid,
+        @"connected":
+            @YES
+    });
 
     return 0;
+}
+
+
+static int connectDefaultAirPlayDevice(void) {
+    return sendAirPlayRouteRequest(
+        defaultAirPlayUID(),
+        defaultAirPlayName()
+    );
 }
 
 
@@ -1326,9 +1668,85 @@ int main(int argc, char *argv[]) {
         if (
             [argument
                 isEqualToString:
+                    @"airplay-devices-json"]
+        ) {
+            return printAirPlayDevicesJSON();
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"airplay-connect"]
+        ) {
+            if (argc < 3) {
+                fprintf(
+                    stderr,
+                    "Missing AirPlay device UID\n"
+                );
+
+                return 2;
+            }
+
+            NSString *uid =
+                [NSString
+                    stringWithUTF8String:
+                        argv[2]];
+
+            NSString *name =
+                argc >= 4
+                    ? joinArguments(
+                        argc,
+                        argv,
+                        3
+                    )
+                    : uid;
+
+            return sendAirPlayRouteRequest(
+                uid,
+                name
+            );
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"airplay-set-default"]
+        ) {
+            if (argc < 3) {
+                fprintf(
+                    stderr,
+                    "Missing AirPlay device UID\n"
+                );
+
+                return 2;
+            }
+
+            NSString *uid =
+                [NSString
+                    stringWithUTF8String:
+                        argv[2]];
+
+            NSString *name =
+                argc >= 4
+                    ? joinArguments(
+                        argc,
+                        argv,
+                        3
+                    )
+                    : uid;
+
+            return setDefaultAirPlayDevice(
+                uid,
+                name
+            );
+        }
+
+        if (
+            [argument
+                isEqualToString:
                     @"airplay-rt4817"]
         ) {
-            return sendRt4817RouteRequest();
+            return connectDefaultAirPlayDevice();
         }
 
         if (

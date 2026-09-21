@@ -321,6 +321,81 @@ button:active {
     );
 }
 
+#airplay-devices {
+  background:
+    linear-gradient(
+      135deg,
+      #27a9a1,
+      #3971cc
+    );
+}
+
+.airplay-list {
+  display: grid;
+  gap: 12px;
+}
+
+.airplay-device {
+  padding: 15px;
+  border-radius: 19px;
+  background: rgba(255, 255, 255, .10);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, .17),
+    0 10px 28px rgba(0, 0, 0, .25);
+}
+
+.airplay-device-name {
+  font-size: 17px;
+  font-weight: 750;
+}
+
+.airplay-device-uid {
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  color: #aaa7b2;
+  font-size: 12px;
+}
+
+.airplay-device-default {
+  margin-top: 7px;
+  color: #8fd5ff;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.airplay-device-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 13px;
+}
+
+.airplay-device-actions button {
+  min-height: 48px;
+  padding: 10px;
+  border-radius: 15px;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.airplay-connect-button {
+  background:
+    linear-gradient(
+      135deg,
+      #2f8cff,
+      #765cff
+    );
+}
+
+.airplay-default-button {
+  background:
+    linear-gradient(
+      135deg,
+      #3a9e72,
+      #277a8d
+    );
+}
+
 #connect-airplay {
   background:
     linear-gradient(
@@ -437,6 +512,14 @@ button:active {
       </button>
 
       <button
+        id="airplay-devices"
+        class="system-button"
+        type="button"
+      >
+        AirPlay Devices
+      </button>
+
+      <button
         id="restart-music"
         class="system-button"
         type="button"
@@ -486,6 +569,31 @@ button:active {
     ></div>
   </section>
 
+  <section
+    id="airplay-screen"
+    class="hidden"
+  >
+    <div class="header-row">
+      <button
+        id="airplay-back"
+        class="back"
+      >
+        Back
+      </button>
+
+      <h1>
+        AirPlay Devices
+      </h1>
+
+      <div></div>
+    </div>
+
+    <div
+      id="airplay-list"
+      class="airplay-list"
+    ></div>
+  </section>
+
   <div id="status"></div>
 </main>
 
@@ -520,6 +628,26 @@ const toggleButton =
 const connectAirPlayButton =
   document.querySelector(
     "#connect-airplay"
+  );
+
+const airPlayDevicesButton =
+  document.querySelector(
+    "#airplay-devices"
+  );
+
+const airPlayScreen =
+  document.querySelector(
+    "#airplay-screen"
+  );
+
+const airPlayList =
+  document.querySelector(
+    "#airplay-list"
+  );
+
+const airPlayBackButton =
+  document.querySelector(
+    "#airplay-back"
   );
 
 const restartMusicButton =
@@ -737,6 +865,214 @@ async function runSystemAction(
       normalLabel;
   }
 }
+
+async function connectAirPlayDevice(
+  device
+) {
+  try {
+    const result =
+      await readJSON(
+        "/api/airplay/connect-device",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+          body: JSON.stringify({
+            uid: device.uid,
+            name: device.name
+          })
+        }
+      );
+
+    setStatus(
+      result.message
+      || "Connected to "
+      + device.name
+    );
+
+  } catch (error) {
+    setStatus(
+      error.message
+    );
+  }
+}
+
+
+async function setDefaultAirPlayDevice(
+  device
+) {
+  try {
+    const result =
+      await readJSON(
+        "/api/airplay/default",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+          body: JSON.stringify({
+            uid: device.uid,
+            name: device.name
+          })
+        }
+      );
+
+    setStatus(
+      result.message
+      || "Default set to "
+      + device.name
+    );
+
+    await loadAirPlayDevices();
+
+  } catch (error) {
+    setStatus(
+      error.message
+    );
+  }
+}
+
+
+async function loadAirPlayDevices() {
+  airPlayList.innerHTML = "";
+
+  try {
+    const result =
+      await readJSON(
+        "/api/airplay/devices"
+      );
+
+    if (
+      result.devices.length === 0
+    ) {
+      airPlayList.textContent =
+        "No external AirPlay devices are "
+        + "currently exposed by Music. "
+        + "Open Music's AirPlay picker once "
+        + "to refresh the list.";
+
+      return;
+    }
+
+    for (
+      const device
+      of result.devices
+    ) {
+      const card =
+        document.createElement("div");
+
+      card.className =
+        "airplay-device";
+
+      const name =
+        document.createElement("div");
+
+      name.className =
+        "airplay-device-name";
+
+      name.textContent =
+        device.name;
+
+      const uid =
+        document.createElement("div");
+
+      uid.className =
+        "airplay-device-uid";
+
+      uid.textContent =
+        device.uid;
+
+      card.append(
+        name,
+        uid
+      );
+
+      if (device.default) {
+        const defaultLabel =
+          document.createElement("div");
+
+        defaultLabel.className =
+          "airplay-device-default";
+
+        defaultLabel.textContent =
+          "Default";
+
+        card.appendChild(
+          defaultLabel
+        );
+      }
+
+      const actions =
+        document.createElement("div");
+
+      actions.className =
+        "airplay-device-actions";
+
+      const connectButton =
+        document.createElement("button");
+
+      connectButton.className =
+        "airplay-connect-button";
+
+      connectButton.textContent =
+        "Connect";
+
+      connectButton.addEventListener(
+        "click",
+        () => {
+          connectAirPlayDevice(
+            device
+          );
+        }
+      );
+
+      const defaultButton =
+        document.createElement("button");
+
+      defaultButton.className =
+        "airplay-default-button";
+
+      defaultButton.textContent =
+        device.default
+          ? "Default"
+          : "Set Default";
+
+      defaultButton.disabled =
+        Boolean(device.default);
+
+      defaultButton.addEventListener(
+        "click",
+        () => {
+          setDefaultAirPlayDevice(
+            device
+          );
+        }
+      );
+
+      actions.append(
+        connectButton,
+        defaultButton
+      );
+
+      card.appendChild(
+        actions
+      );
+
+      airPlayList.appendChild(
+        card
+      );
+    }
+
+  } catch (error) {
+    setStatus(
+      error.message
+    );
+  }
+}
+
 
 async function shufflePlaylist(name) {
   try {
@@ -1002,6 +1338,40 @@ for (
   );
 }
 
+airPlayDevicesButton.addEventListener(
+  "click",
+  () => {
+    mainScreen.classList.add(
+      "hidden"
+    );
+
+    playlistScreen.classList.add(
+      "hidden"
+    );
+
+    airPlayScreen.classList.remove(
+      "hidden"
+    );
+
+    loadAirPlayDevices();
+  }
+);
+
+airPlayBackButton.addEventListener(
+  "click",
+  () => {
+    airPlayScreen.classList.add(
+      "hidden"
+    );
+
+    mainScreen.classList.remove(
+      "hidden"
+    );
+
+    updateNowPlaying();
+  }
+);
+
 connectAirPlayButton.addEventListener(
   "click",
   () => {
@@ -1009,7 +1379,7 @@ connectAirPlayButton.addEventListener(
       connectAirPlayButton,
       "/api/airplay/connect",
       "Connecting…",
-      "Connected to rt4817"
+      "Connected to default AirPlay device"
     );
   }
 );
@@ -1181,6 +1551,12 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/api/airplay/devices":
+            self.mediactl_json(
+                ["airplay-devices-json"]
+            )
+            return
+
         if path == "/api/playlists":
             self.mediactl_json(
                 ["playlists-json"]
@@ -1257,6 +1633,110 @@ class Handler(BaseHTTPRequestHandler):
                     "ok": result.returncode == 0,
                     "stdout": result.stdout.strip(),
                     "error": result.stderr.strip()
+                }
+            )
+            return
+
+        if path == "/api/airplay/connect-device":
+            try:
+                payload = self.read_json_body()
+                uid = str(payload["uid"])
+                name = str(payload["name"])
+            except Exception:
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid AirPlay device"
+                    }
+                )
+                return
+
+            result = execute(
+                [
+                    "airplay-connect",
+                    uid,
+                    name
+                ]
+            )
+
+            succeeded = (
+                result.returncode == 0
+            )
+
+            self.send_json(
+                200 if succeeded else 500,
+                {
+                    "ok": succeeded,
+                    "message": (
+                        "Connected to " + name
+                        if succeeded
+                        else ""
+                    ),
+                    "stdout":
+                        result.stdout.strip(),
+                    "error": (
+                        ""
+                        if succeeded
+                        else (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "AirPlay connection failed"
+                        )
+                    )
+                }
+            )
+            return
+
+        if path == "/api/airplay/default":
+            try:
+                payload = self.read_json_body()
+                uid = str(payload["uid"])
+                name = str(payload["name"])
+            except Exception:
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid AirPlay default"
+                    }
+                )
+                return
+
+            result = execute(
+                [
+                    "airplay-set-default",
+                    uid,
+                    name
+                ]
+            )
+
+            succeeded = (
+                result.returncode == 0
+            )
+
+            self.send_json(
+                200 if succeeded else 500,
+                {
+                    "ok": succeeded,
+                    "message": (
+                        "Default set to " + name
+                        if succeeded
+                        else ""
+                    ),
+                    "stdout":
+                        result.stdout.strip(),
+                    "error": (
+                        ""
+                        if succeeded
+                        else (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "Could not save default"
+                        )
+                    )
                 }
             )
             return
