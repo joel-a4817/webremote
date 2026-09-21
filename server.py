@@ -1,12 +1,12 @@
-import time
-from pathlib import Path
 #!/var/jb/usr/bin/python3
+import time
+import subprocess
+from pathlib import Path
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from subprocess import run
 from urllib.parse import parse_qs, urlparse
 import json
-import subprocess
 
 MEDIACTL = "/var/jb/usr/local/bin/mediactl"
 PORT = 8765
@@ -51,6 +51,39 @@ PAGE = r"""<!doctype html>
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  overflow-y: scroll;
+  scrollbar-color:
+    rgba(255, 255, 255, .34)
+    rgba(255, 255, 255, .07);
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background:
+    rgba(255, 255, 255, .07);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background:
+    rgba(255, 255, 255, .34);
+  background-clip:
+    padding-box;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background:
+    rgba(255, 255, 255, .55);
+  background-clip:
+    padding-box;
 }
 
 body {
@@ -129,6 +162,65 @@ h1 {
 
   font-size: 15px;
   line-height: 1.35;
+}
+
+.playback-progress {
+  margin-top: 16px;
+}
+
+#playback-seek {
+  --seek-progress: 0%;
+
+  display: block;
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+#playback-seek:disabled {
+  opacity: .45;
+}
+
+#playback-seek::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      to right,
+      #ffffff 0%,
+      #ffffff var(--seek-progress),
+      rgba(255, 255, 255, .22)
+        var(--seek-progress),
+      rgba(255, 255, 255, .22) 100%
+    );
+}
+
+#playback-seek::-webkit-slider-thumb {
+  width: 17px;
+  height: 17px;
+  margin-top: -6px;
+  border: 0;
+  border-radius: 50%;
+  background: white;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, .38);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.playback-times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1px;
+  color: #aaa7b7;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .controls {
@@ -455,6 +547,24 @@ button:active {
       <div class="now-label">Now Playing</div>
       <div id="current-title">Loading…</div>
       <div id="current-details"></div>
+
+      <div class="playback-progress">
+        <input
+          id="playback-seek"
+          type="range"
+          min="0"
+          max="0"
+          step="0.1"
+          value="0"
+          disabled
+          aria-label="Playback position"
+        >
+
+        <div class="playback-times">
+          <span id="playback-elapsed">0:00</span>
+          <span id="playback-duration">0:00</span>
+        </div>
+      </div>
     </div>
 
     <div class="controls">
@@ -624,6 +734,20 @@ const currentTitle =
 
 const currentDetails =
   document.querySelector("#current-details");
+const playbackSeek =
+  document.querySelector(
+    "#playback-seek"
+  );
+
+const playbackElapsed =
+  document.querySelector(
+    "#playback-elapsed"
+  );
+
+const playbackDuration =
+  document.querySelector(
+    "#playback-duration"
+  );
 
 const toggleButton =
   document.querySelector("#toggle");
@@ -703,6 +827,244 @@ const ICONS = {
     </svg>
   `
 };
+
+let seekInteractionActive = false;
+let liveSeekTimer = null;
+let liveSeekInFlight = false;
+let pendingLiveSeek = null;
+
+
+function formatPlaybackTime(value) {
+  const totalSeconds =
+    Number.isFinite(Number(value))
+      ? Math.max(
+          0,
+          Math.floor(Number(value))
+        )
+      : 0;
+
+  const hours =
+    Math.floor(totalSeconds / 3600);
+
+  const minutes =
+    Math.floor(
+      (totalSeconds % 3600) / 60
+    );
+
+  const seconds =
+    totalSeconds % 60;
+
+  if (hours > 0) {
+    return (
+      hours
+      + ":"
+      + String(minutes).padStart(2, "0")
+      + ":"
+      + String(seconds).padStart(2, "0")
+    );
+  }
+
+  return (
+    minutes
+    + ":"
+    + String(seconds).padStart(2, "0")
+  );
+}
+
+
+function updateSeekDisplay(
+  currentTime,
+  duration
+) {
+  const safeDuration =
+    Number.isFinite(Number(duration))
+      ? Math.max(0, Number(duration))
+      : 0;
+
+  const safeCurrentTime =
+    Number.isFinite(Number(currentTime))
+      ? Math.max(
+          0,
+          Math.min(
+            Number(currentTime),
+            safeDuration > 0
+              ? safeDuration
+              : Number(currentTime)
+          )
+        )
+      : 0;
+
+  if (!seekInteractionActive) {
+    playbackSeek.max =
+      String(safeDuration);
+
+    playbackSeek.value =
+      String(safeCurrentTime);
+  }
+
+  const displayedTime =
+    seekInteractionActive
+      ? Number(playbackSeek.value)
+      : safeCurrentTime;
+
+  const progress =
+    safeDuration > 0
+      ? (
+          displayedTime
+          / safeDuration
+          * 100
+        )
+      : 0;
+
+  playbackSeek.style.setProperty(
+    "--seek-progress",
+    progress + "%"
+  );
+
+  playbackElapsed.textContent =
+    formatPlaybackTime(displayedTime);
+
+  playbackDuration.textContent =
+    formatPlaybackTime(safeDuration);
+
+  playbackSeek.disabled =
+    safeDuration <= 0;
+}
+
+
+async function sendLiveSeek(
+  seconds
+) {
+  if (liveSeekInFlight) {
+    pendingLiveSeek = seconds;
+    return;
+  }
+
+  liveSeekInFlight = true;
+
+  try {
+    await readJSON(
+      "/api/seek",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+        body: JSON.stringify({
+          seconds: seconds
+        })
+      }
+    );
+
+  } catch (error) {
+    setStatus(error.message);
+
+  } finally {
+    liveSeekInFlight = false;
+
+    if (pendingLiveSeek !== null) {
+      const nextSeek =
+        pendingLiveSeek;
+
+      pendingLiveSeek = null;
+
+      sendLiveSeek(nextSeek);
+    }
+  }
+}
+
+
+function scheduleLiveSeek() {
+  const seconds =
+    Number(playbackSeek.value);
+
+  if (liveSeekTimer !== null) {
+    clearTimeout(liveSeekTimer);
+  }
+
+  liveSeekTimer = setTimeout(
+    () => {
+      liveSeekTimer = null;
+      sendLiveSeek(seconds);
+    },
+    120
+  );
+}
+
+
+async function commitPlaybackSeek() {
+  const seconds =
+    Number(playbackSeek.value);
+
+  try {
+    await readJSON(
+      "/api/seek",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+        body: JSON.stringify({
+          seconds: seconds
+        })
+      }
+    );
+
+  } catch (error) {
+    setStatus(error.message);
+
+  } finally {
+    seekInteractionActive = false;
+
+    setTimeout(
+      updateNowPlaying,
+      150
+    );
+  }
+}
+
+
+playbackSeek.addEventListener(
+  "pointerdown",
+  () => {
+    seekInteractionActive = true;
+  }
+);
+
+
+playbackSeek.addEventListener(
+  "touchstart",
+  () => {
+    seekInteractionActive = true;
+  },
+  {
+    passive: true
+  }
+);
+
+
+playbackSeek.addEventListener(
+  "input",
+  () => {
+    seekInteractionActive = true;
+
+    updateSeekDisplay(
+      Number(playbackSeek.value),
+      Number(playbackSeek.max)
+    );
+
+    scheduleLiveSeek();
+  }
+);
+
+
+playbackSeek.addEventListener(
+  "change",
+  commitPlaybackSeek
+);
+
 
 function setToggleState(isPlaying) {
   toggleButton.innerHTML =
@@ -789,6 +1151,10 @@ async function updateNowPlaying() {
 
     currentDetails.textContent =
       details.join(" • ");
+    updateSeekDisplay(
+      Number(data.currentTime || 0),
+      Number(data.duration || 0)
+    );
 
   } catch {
     currentTitle.textContent =
@@ -1582,7 +1948,8 @@ class Handler(BaseHTTPRequestHandler):
                     500,
                     {
                         "ok": False,
-                        "error": "uiopen was not found",
+                        "error":
+                            "uiopen was not found",
                     },
                 )
                 return
@@ -1603,8 +1970,32 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
 
-            # Opening Now Playing activates Music's
-            # native AirPlay route discovery.
+            # Allow Now Playing to create and attach
+            # its real Music-owned MPRouteButton.
+            time.sleep(1.5)
+
+            trigger = execute(
+                ["airplay-show-picker"]
+            )
+
+            if trigger.returncode != 0:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": (
+                            trigger.stderr.strip()
+                            or trigger.stdout.strip()
+                            or
+                            "Could not trigger Music's "
+                            "native AirPlay picker"
+                        ),
+                    },
+                )
+                return
+
+            # The native picker is now visible and
+            # MusicUIService is performing discovery.
             time.sleep(2.0)
 
             self.mediactl_json(
@@ -1650,6 +2041,66 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path == "/api/seek":
+            try:
+                payload = self.read_json_body()
+
+                seconds = float(
+                    payload["seconds"]
+                )
+
+                if seconds < 0:
+                    raise ValueError
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid playback position",
+                    },
+                )
+                return
+
+            result = execute(
+                [
+                    "seek",
+                    str(seconds),
+                ]
+            )
+
+            succeeded = (
+                result.returncode == 0
+            )
+
+            self.send_json(
+                200 if succeeded else 500,
+                {
+                    "ok":
+                        succeeded,
+
+                    "stdout":
+                        result.stdout.strip(),
+
+                    "error": (
+                        ""
+                        if succeeded
+                        else (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "Seek failed"
+                        )
+                    ),
+                },
+            )
+            return
 
         if path == "/api/toggle":
             result = execute_toggle()

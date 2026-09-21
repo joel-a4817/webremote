@@ -1,11 +1,12 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import <AVKit/AVKit.h>
 #import <CoreFoundation/CoreFoundation.h>
 
 
-static NSString *const AirPlayPreferencesDomain =
+static NSString *const
+AirPlayPreferencesDomain =
     @"com.joel.mediactl-airplay";
+
 
 static CFStringRef const
 AirPlayShowPickerNotification =
@@ -14,17 +15,10 @@ AirPlayShowPickerNotification =
     );
 
 
-@interface AVRoutePickerView (
-    MediaCtlPrivate
-)
-
-- (void)presentRoutePicker:
-    (id)sender;
-
-- (void)_routePickerButtonTapped:
-    (id)sender;
-
-@end
+static NSString *const
+AirPlayPickerStatusPath =
+    @"/var/mobile/Library/Preferences/"
+    @"com.joel.mediactl-airplay-picker-status.plist";
 
 
 @interface MRAVOutputDevice :
@@ -41,13 +35,51 @@ AirPlayShowPickerNotification =
 
 
 /*
- * Weak because Music owns the real picker.
+ * Music owns the route buttons.
  *
- * We only retain a reference while its configured
- * picker remains alive in Music's interface.
+ * Weak storage avoids changing their lifetime.
  */
-static __weak AVRoutePickerView *
-    MusicRoutePicker = nil;
+static NSHashTable *
+MusicRouteButtons = nil;
+
+
+static BOOL runningInProcess(
+    NSString *name
+) {
+    return [
+        NSProcessInfo
+            .processInfo
+            .processName
+        isEqualToString:
+            name
+    ];
+}
+
+
+static void writePickerStatus(
+    NSString *status,
+    NSString *detail
+) {
+    NSDictionary *record = @{
+        @"status":
+            status ?: @"unknown",
+
+        @"detail":
+            detail ?: @"",
+
+        @"timestamp":
+            @(
+                [[NSDate date]
+                    timeIntervalSince1970]
+            )
+    };
+
+    [record
+        writeToFile:
+            AirPlayPickerStatusPath
+        atomically:
+            YES];
+}
 
 
 static NSString *deviceName(
@@ -183,91 +215,131 @@ static void saveOutputDevices(
                 AirPlayPreferencesDomain];
 
     [preferences
-        setObject:devices
-        forKey:@"devices"];
+        setObject:
+            devices
+        forKey:
+            @"devices"];
 
     [preferences
         setObject:
             [NSDate date]
-        forKey:@"devicesUpdatedAt"];
+        forKey:
+            @"devicesUpdatedAt"];
 
     [preferences synchronize];
+
+    writePickerStatus(
+        @"snapshot-received",
+        [
+            NSString
+            stringWithFormat:
+                @"Received %lu external devices",
+                (unsigned long)devices.count
+        ]
+    );
 }
 
 
-static void showMusicRoutePicker(void) {
+static UIControl *
+bestMusicRouteButton(void) {
+    UIControl *fallback = nil;
+
+    for (
+        UIControl *button
+        in MusicRouteButtons.allObjects
+    ) {
+        if (button == nil) {
+            continue;
+        }
+
+        fallback =
+            fallback ?: button;
+
+        if (
+            button.window != nil &&
+            !button.hidden &&
+            button.alpha > 0.01 &&
+            button.enabled &&
+            button.userInteractionEnabled
+        ) {
+            return button;
+        }
+    }
+
+    return fallback;
+}
+
+
+static void showNativeMusicRoutePicker(void) {
+    if (
+        !runningInProcess(
+            @"Music"
+        )
+    ) {
+        return;
+    }
+
     dispatch_async(
         dispatch_get_main_queue(),
         ^{
-            AVRoutePickerView *picker =
-                MusicRoutePicker;
+            UIControl *button =
+                bestMusicRouteButton();
 
-            if (picker == nil) {
-                NSLog(
-                    @"[MediaCtlRoutes] "
-                    @"No configured Music "
-                    @"AVRoutePickerView available"
+            if (button == nil) {
+                writePickerStatus(
+                    @"no-route-button",
+                    @"Music has not created "
+                    @"an MPRouteButton"
+                );
+
+                return;
+            }
+
+            if (button.window == nil) {
+                writePickerStatus(
+                    @"detached-route-button",
+                    @"MPRouteButton exists but "
+                    @"is not attached to a window"
                 );
 
                 return;
             }
 
             if (
-                picker.window == nil
+                button.hidden ||
+                button.alpha <= 0.01 ||
+                !button.enabled ||
+                !button.userInteractionEnabled
             ) {
-                NSLog(
-                    @"[MediaCtlRoutes] "
-                    @"Music route picker is "
-                    @"not attached to a window"
+                writePickerStatus(
+                    @"inactive-route-button",
+                    @"MPRouteButton is not "
+                    @"currently interactive"
                 );
 
                 return;
             }
 
-            if (
-                [picker respondsToSelector:
-                    @selector(
-                        presentRoutePicker:
-                    )]
-            ) {
-                NSLog(
-                    @"[MediaCtlRoutes] "
-                    @"Presenting native "
-                    @"Music AirPlay picker"
-                );
-
-                [picker
-                    presentRoutePicker:nil];
-
-                return;
-            }
+            writePickerStatus(
+                @"triggering",
+                @"Sending TouchUpInside to "
+                @"Music's MPRouteButton"
+            );
 
             /*
-             * Verified fallback from the runtime
-             * class inspection.
+             * This is the exact mechanism validated
+             * against Music's live Now Playing button.
+             *
+             * UIControlEventTouchUpInside = 1 << 6.
              */
-            if (
-                [picker respondsToSelector:
-                    @selector(
-                        _routePickerButtonTapped:
-                    )]
-            ) {
-                NSLog(
-                    @"[MediaCtlRoutes] "
-                    @"Using native picker "
-                    @"button fallback"
-                );
+            [button
+                sendActionsForControlEvents:
+                    UIControlEventTouchUpInside];
 
-                [picker
-                    _routePickerButtonTapped:nil];
-
-                return;
-            }
-
-            NSLog(
-                @"[MediaCtlRoutes] "
-                @"Music route picker exposes "
-                @"no supported presentation method"
+            writePickerStatus(
+                @"triggered",
+                @"Music's MPRouteButton "
+                @"accepted TouchUpInside"
             );
         }
     );
@@ -281,30 +353,65 @@ static void airPlayNotificationReceived(
     const void *object,
     CFDictionaryRef userInfo
 ) {
-    showMusicRoutePicker();
+    showNativeMusicRoutePicker();
 }
 
 
-%hook AVRoutePickerView
+%hook MPRouteButton
+
+- (id)initWithFrame:
+    (CGRect)frame
+{
+    id result =
+        %orig;
+
+    if (
+        result != nil &&
+        runningInProcess(
+            @"Music"
+        )
+    ) {
+        [MusicRouteButtons
+            addObject:
+                result];
+    }
+
+    return result;
+}
+
+
+- (id)initWithCoder:
+    (NSCoder *)coder
+{
+    id result =
+        %orig;
+
+    if (
+        result != nil &&
+        runningInProcess(
+            @"Music"
+        )
+    ) {
+        [MusicRouteButtons
+            addObject:
+                result];
+    }
+
+    return result;
+}
+
 
 - (void)didMoveToWindow {
     %orig;
 
-    if (self.window != nil) {
-        MusicRoutePicker =
-            self;
-
-        NSLog(
-            @"[MediaCtlRoutes] "
-            @"Captured configured Music "
-            @"route picker: %@",
-            self
-        );
-    } else if (
-        MusicRoutePicker == self
+    if (
+        runningInProcess(
+            @"Music"
+        )
     ) {
-        MusicRoutePicker =
-            nil;
+        [MusicRouteButtons
+            addObject:
+                self];
     }
 }
 
@@ -318,9 +425,15 @@ static void airPlayNotificationReceived(
 {
     %orig;
 
-    saveOutputDevices(
-        snapshot ?: @[]
-    );
+    if (
+        runningInProcess(
+            @"MusicUIService"
+        )
+    ) {
+        saveOutputDevices(
+            snapshot ?: @[]
+        );
+    }
 }
 
 %end
@@ -328,18 +441,45 @@ static void airPlayNotificationReceived(
 
 %ctor {
     @autoreleasepool {
-        CFNotificationCenterAddObserver(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            NULL,
-            airPlayNotificationReceived,
-            AirPlayShowPickerNotification,
-            NULL,
-            CFNotificationSuspensionBehaviorDeliverImmediately
-        );
+        NSString *processName =
+            NSProcessInfo
+                .processInfo
+                .processName;
 
-        NSLog(
-            @"[MediaCtlRoutes] "
-            @"Native AirPlay picker trigger ready"
-        );
+        if (
+            ![processName
+                isEqualToString:
+                    @"Music"] &&
+            ![processName
+                isEqualToString:
+                    @"MusicUIService"]
+        ) {
+            return;
+        }
+
+        if (
+            [processName
+                isEqualToString:
+                    @"Music"]
+        ) {
+            MusicRouteButtons =
+                [NSHashTable
+                    weakObjectsHashTable];
+
+            CFNotificationCenterAddObserver(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                NULL,
+                airPlayNotificationReceived,
+                AirPlayShowPickerNotification,
+                NULL,
+                CFNotificationSuspensionBehaviorDeliverImmediately
+            );
+
+            writePickerStatus(
+                @"ready",
+                @"MediaCtlRoutes loaded "
+                @"into Music"
+            );
+        }
     }
 }

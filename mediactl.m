@@ -2,6 +2,7 @@
 #import <MediaPlayer/MediaPlayer.h>
 #import <dispatch/dispatch.h>
 #import <dlfcn.h>
+#import <math.h>
 /*
  * The Theos SDK does not ship xpc/xpc.h.
  * Declare only the libxpc interfaces used here.
@@ -553,7 +554,9 @@ static int printNowPlayingJSON(void) {
             @"title": @"",
             @"artist": @"",
             @"album": @"",
-            @"id": @""
+            @"id": @"",
+            @"currentTime": @0,
+            @"duration": @0
         });
 
         return 0;
@@ -571,6 +574,32 @@ static int printNowPlayingJSON(void) {
     BOOL playing =
         player.playbackState ==
         MPMusicPlaybackStatePlaying;
+
+    NSNumber *durationValue =
+        [item valueForProperty:
+            MPMediaItemPropertyPlaybackDuration];
+
+    NSTimeInterval duration =
+        durationValue != nil
+            ? durationValue.doubleValue
+            : 0.0;
+
+    NSTimeInterval currentTime =
+        player.currentPlaybackTime;
+
+    if (
+        !isfinite(currentTime) ||
+        currentTime < 0
+    ) {
+        currentTime = 0;
+    }
+
+    if (
+        !isfinite(duration) ||
+        duration < 0
+    ) {
+        duration = 0;
+    }
 
     printJSONObject(@{
         @"available": @YES,
@@ -590,7 +619,9 @@ static int printNowPlayingJSON(void) {
                 item,
                 MPMediaItemPropertyAlbumTitle
             ),
-        @"id": identifier
+        @"id": identifier,
+        @"currentTime": @(currentTime),
+        @"duration": @(duration)
     });
 
     return 0;
@@ -889,19 +920,29 @@ airPlayPreferences(void) {
 }
 
 
-static BOOL validAirPlayUID(
+static BOOL validAirPlayIdentifier(
     NSString *uid
 ) {
-    if (uid.length != 36) {
+    if (
+        uid == nil ||
+        uid.length == 0
+    ) {
         return NO;
     }
 
-    NSUUID *value =
-        [[NSUUID alloc]
-            initWithUUIDString:
-                uid];
+    NSData *utf8 =
+        [uid dataUsingEncoding:
+            NSUTF8StringEncoding];
 
-    return value != nil;
+    if (
+        utf8 == nil ||
+        utf8.length == 0 ||
+        utf8.length > 4096
+    ) {
+        return NO;
+    }
+
+    return YES;
 }
 
 
@@ -914,7 +955,7 @@ defaultAirPlayUID(void) {
                 @"defaultUID"
         ];
 
-    if (!validAirPlayUID(uid)) {
+    if (!validAirPlayIdentifier(uid)) {
         return OriginalAirPlayUID;
     }
 
@@ -977,7 +1018,7 @@ static int printAirPlayDevicesJSON(void) {
             stored[@"name"];
 
         if (
-            !validAirPlayUID(uid) ||
+            !validAirPlayIdentifier(uid) ||
             name.length == 0
         ) {
             continue;
@@ -986,8 +1027,13 @@ static int printAirPlayDevicesJSON(void) {
         [devices addObject:@{
             @"name":
                 name,
+
             @"uid":
                 uid,
+
+            @"connectable":
+                @YES,
+
             @"default":
                 @(
                     [uid
@@ -1016,7 +1062,7 @@ static int setDefaultAirPlayDevice(
     NSString *uid,
     NSString *name
 ) {
-    if (!validAirPlayUID(uid)) {
+    if (!validAirPlayIdentifier(uid)) {
         fprintf(
             stderr,
             "Invalid AirPlay device UID\n"
@@ -1062,11 +1108,359 @@ static int setDefaultAirPlayDevice(
 }
 
 
+static NSData *encodeProtobufVarint(
+    NSUInteger value
+) {
+    uint8_t bytes[10];
+    NSUInteger count = 0;
+
+    do {
+        uint8_t byte =
+            value & 0x7f;
+
+        value >>= 7;
+
+        if (value != 0) {
+            byte |= 0x80;
+        }
+
+        bytes[count++] =
+            byte;
+
+    } while (
+        value != 0 &&
+        count < sizeof(bytes)
+    );
+
+    return [
+        NSData
+        dataWithBytes:
+            bytes
+        length:
+            count
+    ];
+}
+
+
+static BOOL decodeProtobufVarint(
+    NSData *data,
+    NSUInteger offset,
+    NSUInteger *value,
+    NSUInteger *encodedLength
+) {
+    if (
+        data == nil ||
+        offset >= data.length
+    ) {
+        return NO;
+    }
+
+    const uint8_t *bytes =
+        data.bytes;
+
+    NSUInteger result = 0;
+    NSUInteger shift = 0;
+
+    for (
+        NSUInteger index = offset;
+        index < data.length &&
+        index < offset + 10;
+        index++
+    ) {
+        uint8_t byte =
+            bytes[index];
+
+        result |=
+            ((NSUInteger)(
+                byte & 0x7f
+            )) << shift;
+
+        if (
+            (byte & 0x80) == 0
+        ) {
+            if (value != NULL) {
+                *value = result;
+            }
+
+            if (
+                encodedLength != NULL
+            ) {
+                *encodedLength =
+                    index - offset + 1;
+            }
+
+            return YES;
+        }
+
+        shift += 7;
+
+        if (
+            shift >=
+            sizeof(NSUInteger) * 8
+        ) {
+            return NO;
+        }
+    }
+
+    return NO;
+}
+
+
+static NSMutableData *
+dataByReplacingUIDField(
+    NSData *source,
+    NSData *oldUID,
+    NSData *newUID
+) {
+    if (
+        source == nil ||
+        oldUID == nil ||
+        newUID == nil
+    ) {
+        return nil;
+    }
+
+    const uint8_t *bytes =
+        source.bytes;
+
+    for (
+        NSUInteger offset = 0;
+        offset < source.length;
+        offset++
+    ) {
+        /*
+         * Protobuf field number 3,
+         * wire type 2:
+         *
+         * 0x1a <varint length> <UID bytes>
+         */
+        if (bytes[offset] != 0x1a) {
+            continue;
+        }
+
+        NSUInteger oldLength = 0;
+        NSUInteger oldLengthBytes = 0;
+
+        if (
+            !decodeProtobufVarint(
+                source,
+                offset + 1,
+                &oldLength,
+                &oldLengthBytes
+            )
+        ) {
+            continue;
+        }
+
+        if (
+            oldLength !=
+            oldUID.length
+        ) {
+            continue;
+        }
+
+        NSUInteger valueOffset =
+            offset +
+            1 +
+            oldLengthBytes;
+
+        if (
+            valueOffset >
+            source.length ||
+            oldLength >
+            source.length -
+                valueOffset
+        ) {
+            continue;
+        }
+
+        NSRange valueRange =
+            NSMakeRange(
+                valueOffset,
+                oldLength
+            );
+
+        NSData *candidate =
+            [source subdataWithRange:
+                valueRange];
+
+        if (
+            ![candidate
+                isEqualToData:
+                    oldUID]
+        ) {
+            continue;
+        }
+
+        NSData *newLength =
+            encodeProtobufVarint(
+                newUID.length
+            );
+
+        NSMutableData *result =
+            [NSMutableData data];
+
+        [result appendData:
+            [source subdataWithRange:
+                NSMakeRange(
+                    0,
+                    offset + 1
+                )
+            ]
+        ];
+
+        [result appendData:
+            newLength];
+
+        [result appendData:
+            newUID];
+
+        NSUInteger suffixOffset =
+            NSMaxRange(valueRange);
+
+        if (
+            suffixOffset <
+            source.length
+        ) {
+            [result appendData:
+                [source subdataWithRange:
+                    NSMakeRange(
+                        suffixOffset,
+                        source.length -
+                            suffixOffset
+                    )
+                ]
+            ];
+        }
+
+        return result;
+    }
+
+    return nil;
+}
+
+
+static BOOL replaceUIDDataRecursively(
+    id object,
+    NSData *oldUID,
+    NSData *newUID,
+    NSUInteger *replacementCount
+) {
+    if (
+        object == nil ||
+        replacementCount == NULL
+    ) {
+        return NO;
+    }
+
+    if (
+        [object
+            isKindOfClass:
+                [NSMutableDictionary class]]
+    ) {
+        NSMutableDictionary *dictionary =
+            object;
+
+        NSArray *keys =
+            dictionary.allKeys;
+
+        for (id key in keys) {
+            id value =
+                dictionary[key];
+
+            if (
+                [value
+                    isKindOfClass:
+                        [NSData class]]
+            ) {
+                NSMutableData *replacement =
+                    dataByReplacingUIDField(
+                        value,
+                        oldUID,
+                        newUID
+                    );
+
+                if (replacement != nil) {
+                    dictionary[key] =
+                        replacement;
+
+                    *replacementCount += 1;
+                }
+
+                continue;
+            }
+
+            replaceUIDDataRecursively(
+                value,
+                oldUID,
+                newUID,
+                replacementCount
+            );
+        }
+
+        return YES;
+    }
+
+    if (
+        [object
+            isKindOfClass:
+                [NSMutableArray class]]
+    ) {
+        NSMutableArray *array =
+            object;
+
+        for (
+            NSUInteger index = 0;
+            index < array.count;
+            index++
+        ) {
+            id value =
+                array[index];
+
+            if (
+                [value
+                    isKindOfClass:
+                        [NSData class]]
+            ) {
+                NSMutableData *replacement =
+                    dataByReplacingUIDField(
+                        value,
+                        oldUID,
+                        newUID
+                    );
+
+                if (replacement != nil) {
+                    array[index] =
+                        replacement;
+
+                    *replacementCount += 1;
+                }
+
+                continue;
+            }
+
+            replaceUIDDataRecursively(
+                value,
+                oldUID,
+                newUID,
+                replacementCount
+            );
+        }
+
+        return YES;
+    }
+
+    return NO;
+}
+
+
 static NSData *routePayloadForUID(
     NSString *uid,
     NSError **error
 ) {
-    if (!validAirPlayUID(uid)) {
+    if (
+        !validAirPlayIdentifier(uid)
+    ) {
         if (error != NULL) {
             *error = [
                 NSError
@@ -1074,25 +1468,16 @@ static NSData *routePayloadForUID(
                     @"MediaCtlAirPlay"
                 code:
                     1
-                userInfo: @{
+                userInfo:@{
                     NSLocalizedDescriptionKey:
-                        @"Invalid AirPlay device UID"
+                        @"Invalid AirPlay "
+                        @"device identifier"
                 }
             ];
         }
 
         return nil;
     }
-
-    NSData *originalUIDData =
-        [OriginalAirPlayUID
-            dataUsingEncoding:
-                NSUTF8StringEncoding];
-
-    NSData *replacementUIDData =
-        [uid
-            dataUsingEncoding:
-                NSUTF8StringEncoding];
 
     NSData *template =
         [NSData
@@ -1101,36 +1486,83 @@ static NSData *routePayloadForUID(
             length:
                 kRt4817ModificationPayloadLength];
 
-    NSRange fullRange =
-        NSMakeRange(
-            0,
-            template.length
-        );
+    NSError *parseError = nil;
 
-    NSRange targetRange =
-        [template
-            rangeOfData:
-                originalUIDData
+    NSPropertyListFormat format =
+        NSPropertyListBinaryFormat_v1_0;
+
+    id archive =
+        [NSPropertyListSerialization
+            propertyListWithData:
+                template
             options:
-                0
-            range:
-                fullRange];
+                NSPropertyListMutableContainersAndLeaves
+            format:
+                &format
+            error:
+                &parseError];
 
-    if (
-        targetRange.location ==
-        NSNotFound
-    ) {
+    if (archive == nil) {
         if (error != NULL) {
+            *error =
+                parseError
+                ?: [
+                    NSError
+                    errorWithDomain:
+                        @"MediaCtlAirPlay"
+                    code:
+                        2
+                    userInfo:@{
+                        NSLocalizedDescriptionKey:
+                            @"Could not parse "
+                            @"AirPlay request template"
+                    }
+                ];
+        }
+
+        return nil;
+    }
+
+    NSData *oldUID =
+        [OriginalAirPlayUID
+            dataUsingEncoding:
+                NSUTF8StringEncoding];
+
+    NSData *newUID =
+        [uid
+            dataUsingEncoding:
+                NSUTF8StringEncoding];
+
+    NSUInteger replacementCount = 0;
+
+    replaceUIDDataRecursively(
+        archive,
+        oldUID,
+        newUID,
+        &replacementCount
+    );
+
+    if (replacementCount != 1) {
+        if (error != NULL) {
+            NSString *message =
+                [
+                    NSString
+                    stringWithFormat:
+                        @"Expected one AirPlay UID "
+                        @"field, found %lu",
+                        (unsigned long)
+                            replacementCount
+                ];
+
             *error = [
                 NSError
                 errorWithDomain:
                     @"MediaCtlAirPlay"
                 code:
-                    2
-                userInfo: @{
+                    3
+                userInfo:@{
                     NSLocalizedDescriptionKey:
-                        @"AirPlay template UID "
-                        @"was not found"
+                        message
                 }
             ];
         }
@@ -1138,62 +1570,39 @@ static NSData *routePayloadForUID(
         return nil;
     }
 
-    NSUInteger secondStart =
-        NSMaxRange(targetRange);
+    NSError *serializationError = nil;
 
-    if (
-        secondStart <
-        template.length
-    ) {
-        NSRange remainingRange =
-            NSMakeRange(
-                secondStart,
-                template.length -
-                    secondStart
-            );
+    NSData *payload =
+        [NSPropertyListSerialization
+            dataWithPropertyList:
+                archive
+            format:
+                NSPropertyListBinaryFormat_v1_0
+            options:
+                0
+            error:
+                &serializationError];
 
-        NSRange duplicateRange =
-            [template
-                rangeOfData:
-                    originalUIDData
-                options:
-                    0
-                range:
-                    remainingRange];
-
-        if (
-            duplicateRange.location !=
-            NSNotFound
-        ) {
-            if (error != NULL) {
-                *error = [
+    if (payload == nil) {
+        if (error != NULL) {
+            *error =
+                serializationError
+                ?: [
                     NSError
                     errorWithDomain:
                         @"MediaCtlAirPlay"
                     code:
-                        3
-                    userInfo: @{
+                        4
+                    userInfo:@{
                         NSLocalizedDescriptionKey:
-                            @"AirPlay template "
-                            @"contains multiple UIDs"
+                            @"Could not serialize "
+                            @"AirPlay request"
                     }
                 ];
-            }
-
-            return nil;
         }
+
+        return nil;
     }
-
-    NSMutableData *payload =
-        [template mutableCopy];
-
-    [payload
-        replaceBytesInRange:
-            targetRange
-        withBytes:
-            replacementUIDData.bytes
-        length:
-            replacementUIDData.length];
 
     return payload;
 }
@@ -1489,6 +1898,73 @@ static int restartMusicInstance(void) {
 
 
 
+static int seekToPlaybackTime(
+    NSTimeInterval requestedTime
+) {
+    if (
+        !isfinite(requestedTime) ||
+        requestedTime < 0
+    ) {
+        fprintf(
+            stderr,
+            "Invalid playback time\n"
+        );
+
+        return 2;
+    }
+
+    MPMusicPlayerController *player =
+        [MPMusicPlayerController
+            systemMusicPlayer];
+
+    MPMediaItem *item =
+        player.nowPlayingItem;
+
+    if (item == nil) {
+        fprintf(
+            stderr,
+            "Nothing is currently playing\n"
+        );
+
+        return 1;
+    }
+
+    NSNumber *durationValue =
+        [item valueForProperty:
+            MPMediaItemPropertyPlaybackDuration];
+
+    NSTimeInterval duration =
+        durationValue != nil
+            ? durationValue.doubleValue
+            : 0.0;
+
+    NSTimeInterval target =
+        requestedTime;
+
+    if (
+        isfinite(duration) &&
+        duration > 0 &&
+        target > duration
+    ) {
+        target = duration;
+    }
+
+    player.currentPlaybackTime =
+        target;
+
+    printJSONObject(@{
+        @"currentTime": @(target),
+        @"duration": @(
+            duration > 0
+                ? duration
+                : 0
+        )
+    });
+
+    return 0;
+}
+
+
 static int resumeAtFullVolume(void) {
     MPMusicPlayerController *player =
         [MPMusicPlayerController
@@ -1680,6 +2156,44 @@ int main(int argc, char *argv[]) {
                 joinArguments(argc, argv, 2);
 
             return playPlaylist(requestedName);
+        }
+
+        if (
+            [argument
+                isEqualToString:@"seek"]
+        ) {
+            if (argc < 3) {
+                fprintf(
+                    stderr,
+                    "Usage: mediactl seek <seconds>\n"
+                );
+
+                return 2;
+            }
+
+            char *endPointer = NULL;
+
+            double requestedTime =
+                strtod(
+                    argv[2],
+                    &endPointer
+                );
+
+            if (
+                endPointer == argv[2] ||
+                *endPointer != '\0'
+            ) {
+                fprintf(
+                    stderr,
+                    "Invalid playback time\n"
+                );
+
+                return 2;
+            }
+
+            return seekToPlaybackTime(
+                requestedTime
+            );
         }
 
         if (
