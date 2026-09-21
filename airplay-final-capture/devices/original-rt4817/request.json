@@ -1,0 +1,80 @@
+{
+  "sourceProcess": "MusicUIService",
+  "pid": 8982,
+  "timestamp": "2026-09-20T15:05:06.332Z",
+  "api": "xpc_connection_send_message_with_reply",
+  "messageID": "216172782113783848",
+  "customID": "A89B48B6-360D-4E20-9033-0D0A3939FBEB",
+  "routingContextUID": "577E1BCA-2D9B-41C2-A8F8-C515CE8072D4",
+  "expectedDeviceUID": "07b32858-19ad-447c-898c-13d7f0ea07fe",
+  "payloadLength": 815,
+  "payloadSHA256": "8c0d0521437b8406ffc5814fa66f580a68b391a761eff911e0030a0c4f29442f",
+  "connection": "<connection: 0x3017945a0> { name = com.apple.mediaremoted.xpc, listener = false, pid = 8980, euid = 501, egid = 501, asid = 0 }",
+  "message": "<dictionary: 0x300ca5ce0> { count = 4, transaction: 0, voucher = 0x0, contents =\n\t\"MRXPC_CONTEXT_MODIFICATION_DATA_KEY\" => <data: 0x303da6880>: { length = 815 bytes, contents = 0x62706c6973743030d4010203040506070a58247665727369... }\n\t\"MRXPC_ROUTING_CONTEXT_UID_KEY\" => <string: 0x3026f2070> { length = 36, contents = \"577E1BCA-2D9B-41C2-A8F8-C515CE8072D4\" }\n\t\"MRXPC_MESSAGE_ID_KEY\" => <uint64: 0x3028ce4c0>: 216172782113783848\n\t\"MRXPC_MESSAGE_CUSTOM_ID_KEY\" => <string: 0x3026f1b90> { length = 36, contents = \"A89B48B6-360D-4E20-9033-0D0A3939FBEB\" }\n}",
+  "stack": [
+    {
+      "address": "0x1ae204550",
+      "symbol": "0x1ae204550"
+    },
+    {
+      "address": "0x1ae290d0c",
+      "symbol": "0x1ae290d0c"
+    },
+    {
+      "address": "0x1ae2a88bc",
+      "symbol": "0x1ae2a88bc"
+    },
+    {
+      "address": "0x1ae3ab2d0",
+      "symbol": "0x1ae3ab2d0"
+    },
+    {
+      "address": "0x1ae3abbb4",
+      "symbol": "0x1ae3abbb4"
+    },
+    {
+      "address": "0x1ae39c754",
+      "symbol": "0x1ae39c754"
+    },
+    {
+      "address": "0x1ae39c180",
+      "symbol": "0x1ae39c180"
+    },
+    {
+      "address": "0x1c2befe88",
+      "symbol": "0x1c2befe88"
+    },
+    {
+      "address": "0x1ae692bf4",
+      "symbol": "0x1ae692bf4"
+    },
+    {
+      "address": "0x1ae5a9b8c",
+      "symbol": "0x1ae5a9b8c"
+    },
+    {
+      "address": "0x1ae6927a8",
+      "symbol": "0x1ae6927a8"
+    },
+    {
+      "address": "0x1ae69199c",
+      "symbol": "0x1ae69199c"
+    },
+    {
+      "address": "0x1ae6910fc",
+      "symbol": "0x1ae6910fc"
+    },
+    {
+      "address": "0x1c2c0db18",
+      "symbol": "0x1c2c0db18"
+    },
+    {
+      "address": "0x1ae68fafc",
+      "symbol": "0x1ae68fafc"
+    },
+    {
+      "address": "0x1ae68ec10",
+      "symbol": "0x1ae68ec10"
+    }
+  ]
+}

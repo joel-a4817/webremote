@@ -1,0 +1,16 @@
+{
+  "devices": [
+    {
+      "name": "rt4817",
+      "uid": "69a7a36c-80fd-4053-abb3-f669dc934b87",
+      "pickable": true,
+      "local": false
+    },
+    {
+      "name": "Speaker",
+      "uid": "Speaker",
+      "pickable": true,
+      "local": true
+    }
+  ]
+}
