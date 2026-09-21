@@ -22,7 +22,7 @@ MediaCtlLock_FRAMEWORKS = Foundation CoreFoundation
 
 MediaCtlRoutes_FILES = AirPlayRoutes.x
 MediaCtlRoutes_CFLAGS = -fobjc-arc
-MediaCtlRoutes_FRAMEWORKS = Foundation UIKit AVKit CoreFoundation
+MediaCtlRoutes_FRAMEWORKS = Foundation
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 

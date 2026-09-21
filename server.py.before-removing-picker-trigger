@@ -1575,6 +1575,7 @@ class Handler(BaseHTTPRequestHandler):
                     text=True,
                     timeout=5,
                 )
+
                 break
 
             if open_music is None:
@@ -1582,7 +1583,8 @@ class Handler(BaseHTTPRequestHandler):
                     500,
                     {
                         "ok": False,
-                        "error": "uiopen was not found",
+                        "error":
+                            "uiopen was not found",
                     },
                 )
                 return
@@ -1596,15 +1598,35 @@ class Handler(BaseHTTPRequestHandler):
                             open_music.stderr.strip()
                             or open_music.stdout.strip()
                             or
-                            "Could not open Music "
-                            "Now Playing"
+                            "Could not open "
+                            "Music Now Playing"
                         ),
                     },
                 )
                 return
 
-            # Opening Now Playing activates Music's
-            # native AirPlay route discovery.
+            time.sleep(1.5)
+
+            trigger = execute(
+                ["airplay-show-picker"]
+            )
+
+            if trigger.returncode != 0:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": (
+                            trigger.stderr.strip()
+                            or trigger.stdout.strip()
+                            or
+                            "Music did not acknowledge "
+                            "the AirPlay picker request"
+                        ),
+                    },
+                )
+                return
+
             time.sleep(2.0)
 
             self.mediactl_json(

@@ -120,7 +120,6 @@ static void printUsage(void) {
         "  mediactl lock-device\n"
         "  mediactl airplay-rt4817\n"
         "  mediactl airplay-devices-json\n"
-        "  mediactl airplay-show-picker\n"
         "  mediactl airplay-connect <uid> [name]\n"
         "  mediactl airplay-set-default <uid> [name]\n"
         "  mediactl restart-music\n"
@@ -1513,29 +1512,6 @@ static int resumeAtFullVolume(void) {
 
 
 
-static int showNativeAirPlayPicker(void) {
-    CFNotificationCenterPostNotification(
-        CFNotificationCenterGetDarwinNotifyCenter(),
-        CFSTR(
-            "com.joel.mediactl.airplay-show-picker"
-        ),
-        NULL,
-        NULL,
-        true
-    );
-
-    printJSONObject(@{
-        @"ok":
-            @YES,
-
-        @"triggered":
-            @YES
-    });
-
-    return 0;
-}
-
-
 static int lockDeviceOnly(void) {
     CFNotificationCenterPostNotification(
         CFNotificationCenterGetDarwinNotifyCenter(),
@@ -1687,14 +1663,6 @@ int main(int argc, char *argv[]) {
                 isEqualToString:@"resume"]
         ) {
             return resumeAtFullVolume();
-        }
-
-        if (
-            [argument
-                isEqualToString:
-                    @"airplay-show-picker"]
-        ) {
-            return showNativeAirPlayPicker();
         }
 
         if (

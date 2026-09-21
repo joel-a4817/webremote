@@ -1,12 +1,10 @@
 import time
-from pathlib import Path
 #!/var/jb/usr/bin/python3
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from subprocess import run
 from urllib.parse import parse_qs, urlparse
 import json
-import subprocess
 
 MEDIACTL = "/var/jb/usr/local/bin/mediactl"
 PORT = 8765
@@ -1555,56 +1553,28 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/airplay/devices":
-            uiopen_paths = (
-                "/var/jb/usr/bin/uiopen",
-                "/usr/bin/uiopen",
+            trigger = execute(
+                ["airplay-show-picker"]
             )
 
-            open_music = None
-
-            for uiopen_path in uiopen_paths:
-                if not Path(uiopen_path).exists():
-                    continue
-
-                open_music = subprocess.run(
-                    [
-                        uiopen_path,
-                        "music://show-now-playing",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                break
-
-            if open_music is None:
-                self.send_json(
-                    500,
-                    {
-                        "ok": False,
-                        "error": "uiopen was not found",
-                    },
-                )
-                return
-
-            if open_music.returncode != 0:
+            if trigger.returncode != 0:
                 self.send_json(
                     500,
                     {
                         "ok": False,
                         "error": (
-                            open_music.stderr.strip()
-                            or open_music.stdout.strip()
+                            trigger.stderr.strip()
+                            or trigger.stdout.strip()
                             or
-                            "Could not open Music "
-                            "Now Playing"
-                        ),
-                    },
+                            "Could not trigger "
+                            "Music's AirPlay picker"
+                        )
+                    }
                 )
                 return
 
-            # Opening Now Playing activates Music's
-            # native AirPlay route discovery.
+            # Native route discovery begins when
+            # Music presents its configured picker.
             time.sleep(2.0)
 
             self.mediactl_json(
