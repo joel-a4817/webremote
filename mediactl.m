@@ -75,6 +75,11 @@ xpc_connection_send_message_with_reply_sync(
     xpc_connection_t connection,
     xpc_object_t message
 );
+extern void
+xpc_connection_send_message(
+    xpc_connection_t connection,
+    xpc_object_t message
+);
 
 extern xpc_type_t
 xpc_get_type(
@@ -91,6 +96,17 @@ xpc_copy_description(
 #import <unistd.h>
 
 #import "rt4817_request.h"
+#import "ipad_speaker_request.h"
+
+@interface AVSystemController : NSObject
++ (instancetype)sharedAVSystemController;
+- (float)volumeForCategory:(NSString *)category;
+- (BOOL)getVolume:(float *)volume
+    forCategory:(NSString *)category;
+- (BOOL)setVolumeTo:(float)volume
+    forCategory:(NSString *)category;
+@end
+
 
 extern char **environ;
 
@@ -123,6 +139,7 @@ static void printUsage(void) {
         "  mediactl airplay-devices-json\n"
         "  mediactl airplay-show-picker\n"
         "  mediactl airplay-connect <uid> [name]\n"
+        "  mediactl airplay-disconnect\n"
         "  mediactl airplay-set-default <uid> [name]\n"
         "  mediactl restart-music\n"
         "  mediactl resume\n"
@@ -362,6 +379,11 @@ static int sendMediaRemoteCommand(
     return 0;
 }
 
+static BOOL volumeLockedAtMaximum(void);
+static double currentSystemVolume(void);
+static BOOL applySystemVolume(double volume);
+
+
 static int togglePlaybackAtFullVolume(void) {
     MPMusicPlayerController *player =
         [MPMusicPlayerController
@@ -377,16 +399,18 @@ static int togglePlaybackAtFullVolume(void) {
         );
     }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    BOOL locked =
+        volumeLockedAtMaximum();
 
-    player.volume = 1.0f;
-
-#pragma clang diagnostic pop
+    if (locked) {
+        applySystemVolume(1.0);
+    }
 
     return sendMediaRemoteCommand(
         0,
-        "play at 100% volume"
+        locked
+            ? "play at 100% volume"
+            : "play without changing volume"
     );
 }
 
@@ -1608,64 +1632,40 @@ static NSData *routePayloadForUID(
 }
 
 
-static int sendAirPlayRouteRequest(
+static int sendAirPlayPayload(
+    NSData *payload,
+    NSString *name,
     NSString *uid,
-    NSString *name
+    BOOL connected
 ) {
-    NSError *payloadError = nil;
-
-    NSData *payload =
-        routePayloadForUID(
-            uid,
-            &payloadError
-        );
-
-    if (payload == nil) {
-        fprintf(
-            stderr,
-            "%s\n",
-            payloadError
-                .localizedDescription
-                .UTF8String
-        );
-
+    if (payload == nil || payload.length == 0) {
+        fprintf(stderr, "AirPlay payload is empty\n");
         return 1;
     }
 
     const char serviceName[] =
         "com.apple.mediaremoted.xpc";
-
     const char contextUID[] =
         "577E1BCA-2D9B-41C2-"
         "A8F8-C515CE8072D4";
-
     const uint64_t messageID =
         216172782113783848ULL;
 
     NSString *customID =
-        NSUUID.UUID.UUIDString
-            .uppercaseString;
-
+        NSUUID.UUID.UUIDString.uppercaseString;
     dispatch_queue_t queue =
         dispatch_get_global_queue(
             QOS_CLASS_USER_INITIATED,
             0
         );
-
     xpc_connection_t connection =
         xpc_connection_create_mach_service(
             serviceName,
             queue,
             0
         );
-
     if (connection == NULL) {
-        fprintf(
-            stderr,
-            "Could not connect to "
-            "mediaremoted.\n"
-        );
-
+        fprintf(stderr, "Could not connect to mediaremoted.\n");
         return 1;
     }
 
@@ -1674,25 +1674,12 @@ static int sendAirPlayRouteRequest(
         ^(xpc_object_t event) {
         }
     );
-
-    xpc_connection_resume(
-        connection
-    );
+    xpc_connection_resume(connection);
 
     xpc_object_t message =
-        xpc_dictionary_create(
-            NULL,
-            NULL,
-            0
-        );
-
+        xpc_dictionary_create(NULL, NULL, 0);
     if (message == NULL) {
-        fprintf(
-            stderr,
-            "Could not create the "
-            "AirPlay request.\n"
-        );
-
+        fprintf(stderr, "Could not create the AirPlay request.\n");
         return 1;
     }
 
@@ -1702,79 +1689,76 @@ static int sendAirPlayRouteRequest(
         payload.bytes,
         payload.length
     );
-
     xpc_dictionary_set_string(
         message,
         "MRXPC_ROUTING_CONTEXT_UID_KEY",
         contextUID
     );
-
     xpc_dictionary_set_uint64(
         message,
         "MRXPC_MESSAGE_ID_KEY",
         messageID
     );
-
     xpc_dictionary_set_string(
         message,
         "MRXPC_MESSAGE_CUSTOM_ID_KEY",
         customID.UTF8String
     );
 
-    xpc_object_t reply =
-        xpc_connection_send_message_with_reply_sync(
-            connection,
-            message
-        );
-
-    if (reply == NULL) {
-        fprintf(
-            stderr,
-            "mediaremoted returned no reply.\n"
-        );
-
-        return 1;
-    }
-
-    if (
-        xpc_get_type(reply)
-        == XPC_TYPE_ERROR
-    ) {
-        char *description =
-            xpc_copy_description(
-                reply
-            );
-
-        fprintf(
-            stderr,
-            "mediaremoted rejected "
-            "the request: %s\n",
-            description != NULL
-                ? description
-                : "unknown XPC error"
-        );
-
-        if (description != NULL) {
-            free(description);
-        }
-
-        return 1;
-    }
+    /*
+     * Routing requests can apply successfully while the synchronous
+     * reply path never returns. Queue the validated native request and
+     * return immediately so mediactl cannot wedge the web server.
+     */
+    xpc_connection_send_message(
+        connection,
+        message
+    );
 
     printJSONObject(@{
-        @"name":
-            name.length > 0
-                ? name
-                : uid,
-        @"uid":
-            uid,
-        @"connected":
-            @YES
+        @"name": name ?: @"",
+        @"uid": uid ?: @"",
+        @"connected": @(connected)
     });
-
     return 0;
 }
 
+static int sendAirPlayRouteRequest(
+    NSString *uid,
+    NSString *name
+) {
+    NSError *payloadError = nil;
+    NSData *payload =
+        routePayloadForUID(uid, &payloadError);
+    if (payload == nil) {
+        fprintf(
+            stderr,
+            "%s\n",
+            payloadError.localizedDescription.UTF8String
+        );
+        return 1;
+    }
+
+    return sendAirPlayPayload(
+        payload,
+        name.length > 0 ? name : uid,
+        uid,
+        YES
+    );
+}
+
+static int disconnectAirPlay(void) {
+    NSData *payload = [NSData
+        dataWithBytes:kIPadSpeakerModificationPayload
+        length:kIPadSpeakerModificationPayloadLength];
+
+    return sendAirPlayPayload(
+        payload,
+        @"Speaker",
+        @"local-speaker",
+        NO
+    );
+}
 
 static int connectDefaultAirPlayDevice(void) {
     return sendAirPlayRouteRequest(
@@ -1965,28 +1949,350 @@ static int seekToPlaybackTime(
 }
 
 
-static int resumeAtFullVolume(void) {
-    MPMusicPlayerController *player =
-        [MPMusicPlayerController
-            systemMusicPlayer];
+static NSString *const
+VolumePreferencesDomain =
+    @"com.joel.mediactl-volume";
 
+static NSString *const
+SystemVolumeCategory =
+    @"Audio/Video";
+
+
+static NSUserDefaults *
+volumePreferences(void) {
+    return [
+        [NSUserDefaults alloc]
+        initWithSuiteName:
+            VolumePreferencesDomain
+    ];
+}
+
+
+static BOOL volumeLockedAtMaximum(void) {
+    NSUserDefaults *preferences =
+        volumePreferences();
+
+    /*
+     * New installs and missing preferences start unlocked.
+     */
+    if (
+        [preferences
+            objectForKey:
+                @"lockAtMaximum"]
+        == nil
+    ) {
+        return NO;
+    }
+
+    return [
+        preferences
+        boolForKey:
+            @"lockAtMaximum"
+    ];
+}
+
+
+static void saveKnownSystemVolume(
+    double volume
+) {
+    if (!isfinite(volume)) {
+        return;
+    }
+
+    NSUserDefaults *preferences =
+        volumePreferences();
+    [preferences
+        setDouble:fmax(0.0, fmin(1.0, volume))
+        forKey:@"lastKnownSystemVolume"];
+    [preferences synchronize];
+}
+
+static double lastKnownSystemVolume(void) {
+    NSUserDefaults *preferences =
+        volumePreferences();
+    if ([preferences objectForKey:@"lastKnownSystemVolume"] == nil) {
+        return NAN;
+    }
+    double volume =
+        [preferences doubleForKey:@"lastKnownSystemVolume"];
+    return isfinite(volume)
+        ? fmax(0.0, fmin(1.0, volume))
+        : NAN;
+}
+
+static double currentSystemVolume(void) {
+    Class controllerClass =
+        NSClassFromString(@"AVSystemController");
+    if (
+        controllerClass != Nil &&
+        [controllerClass respondsToSelector:
+            @selector(sharedAVSystemController)]
+    ) {
+        AVSystemController *controller =
+            [controllerClass sharedAVSystemController];
+        if (controller != nil) {
+            float queriedVolume = 0.0f;
+            if (
+                [controller respondsToSelector:
+                    @selector(getVolume:forCategory:)] &&
+                [controller
+                    getVolume:&queriedVolume
+                    forCategory:SystemVolumeCategory] &&
+                isfinite(queriedVolume) &&
+                queriedVolume >= 0.0f &&
+                queriedVolume <= 1.0f
+            ) {
+                saveKnownSystemVolume(queriedVolume);
+                return queriedVolume;
+            }
+
+            if ([controller respondsToSelector:
+                @selector(volumeForCategory:)]) {
+                double volume =
+                    [controller volumeForCategory:SystemVolumeCategory];
+                if (
+                    isfinite(volume) &&
+                    volume >= 0.0 &&
+                    volume <= 1.0
+                ) {
+                    double known = lastKnownSystemVolume();
+                    if (!(volume == 0.0 && isfinite(known) && known > 0.0)) {
+                        saveKnownSystemVolume(volume);
+                        return volume;
+                    }
+                }
+            }
+        }
+    }
+
+    double known = lastKnownSystemVolume();
+    if (isfinite(known)) {
+        return known;
+    }
+
+    MPMusicPlayerController *player =
+        [MPMusicPlayerController systemMusicPlayer];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-
-    player.volume = 1.0f;
-
+    double fallback = player.volume;
 #pragma clang diagnostic pop
+    if (!isfinite(fallback)) {
+        fallback = 0.0;
+    }
+    fallback = fmax(0.0, fmin(1.0, fallback));
+    saveKnownSystemVolume(fallback);
+    return fallback;
+}
 
-    [player play];
+static BOOL applySystemVolume(
+    double requestedVolume
+) {
+    double target =
+        fmax(0.0, fmin(1.0, requestedVolume));
+    Class controllerClass =
+        NSClassFromString(@"AVSystemController");
+    if (
+        controllerClass != Nil &&
+        [controllerClass respondsToSelector:
+            @selector(sharedAVSystemController)]
+    ) {
+        AVSystemController *controller =
+            [controllerClass sharedAVSystemController];
+        if (
+            controller != nil &&
+            [controller respondsToSelector:
+                @selector(setVolumeTo:forCategory:)]
+        ) {
+            for (NSUInteger attempt = 0; attempt < 5; attempt++) {
+                [controller
+                    setVolumeTo:(float)target
+                    forCategory:SystemVolumeCategory];
+                saveKnownSystemVolume(target);
+                usleep(60000);
+                double observed = currentSystemVolume();
+                if (fabs(observed - target) <= 0.03) {
+                    saveKnownSystemVolume(observed);
+                    return YES;
+                }
+            }
+        }
+    }
 
-    printf(
-        "Set iPad Music volume to 100%% "
-        "and resumed playback\n"
-    );
+    MPMusicPlayerController *player =
+        [MPMusicPlayerController systemMusicPlayer];
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    player.volume = (float)target;
+#pragma clang diagnostic pop
+    saveKnownSystemVolume(target);
+    usleep(100000);
+    return YES;
+}
+
+static int printVolumeJSON(void) {
+    double volume =
+        currentSystemVolume();
+
+    printJSONObject(@{
+        @"volume":
+            @(volume),
+
+        @"percent":
+            @(
+                (NSInteger)llround(
+                    volume * 100.0
+                )
+            ),
+
+        @"locked":
+            @(volumeLockedAtMaximum())
+    });
 
     return 0;
 }
 
+
+static int setPlaybackVolume(
+    double requestedVolume
+) {
+    if (
+        !isfinite(requestedVolume) ||
+        requestedVolume < 0.0 ||
+        requestedVolume > 1.0
+    ) {
+        fprintf(
+            stderr,
+            "Volume must be between 0 and 1\n"
+        );
+
+        return 2;
+    }
+
+    BOOL locked =
+        volumeLockedAtMaximum();
+
+    double target =
+        locked
+            ? 1.0
+            : requestedVolume;
+
+    if (!applySystemVolume(target)) {
+        fprintf(
+            stderr,
+            "Could not apply iPad system volume\n"
+        );
+
+        return 1;
+    }
+
+    double appliedVolume =
+        currentSystemVolume();
+
+    printJSONObject(@{
+        @"volume":
+            @(appliedVolume),
+
+        @"percent":
+            @(
+                (NSInteger)llround(
+                    appliedVolume * 100.0
+                )
+            ),
+
+        @"locked":
+            @(locked)
+    });
+
+    return 0;
+}
+
+
+static int setVolumeLock(
+    BOOL locked
+) {
+    NSUserDefaults *preferences =
+        volumePreferences();
+
+    [preferences
+        setBool:
+            locked
+        forKey:
+            @"lockAtMaximum"];
+
+    if (![preferences synchronize]) {
+        fprintf(
+            stderr,
+            "Could not save volume lock state\n"
+        );
+
+        return 1;
+    }
+
+    if (
+        locked &&
+        !applySystemVolume(1.0)
+    ) {
+        fprintf(
+            stderr,
+            "Could not lock iPad volume at 100%%\n"
+        );
+
+        return 1;
+    }
+
+    double volume =
+        currentSystemVolume();
+
+    printJSONObject(@{
+        @"volume":
+            @(volume),
+
+        @"percent":
+            @(
+                (NSInteger)llround(
+                    volume * 100.0
+                )
+            ),
+
+        @"locked":
+            @(locked)
+    });
+
+    return 0;
+}
+
+
+static int resumeWithVolumePolicy(void) {
+    MPMusicPlayerController *player =
+        [MPMusicPlayerController
+            systemMusicPlayer];
+
+    BOOL locked =
+        volumeLockedAtMaximum();
+
+    if (
+        locked &&
+        !applySystemVolume(1.0)
+    ) {
+        fprintf(
+            stderr,
+            "Could not enforce 100%% system volume\n"
+        );
+
+        return 1;
+    }
+
+    [player play];
+
+    printf(
+        "%s\n",
+        locked
+            ? "Set system volume to 100% and resumed playback"
+            : "Resumed playback without changing volume"
+    );
+
+    return 0;
+}
 
 
 static int showNativeAirPlayPicker(void) {
@@ -2160,6 +2466,102 @@ int main(int argc, char *argv[]) {
 
         if (
             [argument
+                isEqualToString:
+                    @"volume-json"]
+        ) {
+            return printVolumeJSON();
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"volume"]
+        ) {
+            if (argc < 3) {
+                fprintf(
+                    stderr,
+                    "Usage: mediactl volume <0-1>\n"
+                );
+
+                return 2;
+            }
+
+            char *endPointer =
+                NULL;
+
+            double requestedVolume =
+                strtod(
+                    argv[2],
+                    &endPointer
+                );
+
+            if (
+                endPointer == argv[2] ||
+                *endPointer != '\0'
+            ) {
+                fprintf(
+                    stderr,
+                    "Invalid volume\n"
+                );
+
+                return 2;
+            }
+
+            return setPlaybackVolume(
+                requestedVolume
+            );
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"volume-lock"]
+        ) {
+            if (argc < 3) {
+                fprintf(
+                    stderr,
+                    "Usage: mediactl volume-lock "
+                    "<on|off>\n"
+                );
+
+                return 2;
+            }
+
+            NSString *value =
+                [NSString
+                    stringWithUTF8String:
+                        argv[2]];
+
+            if (
+                [value
+                    isEqualToString:
+                        @"on"]
+            ) {
+                return setVolumeLock(
+                    YES
+                );
+            }
+
+            if (
+                [value
+                    isEqualToString:
+                        @"off"]
+            ) {
+                return setVolumeLock(
+                    NO
+                );
+            }
+
+            fprintf(
+                stderr,
+                "Volume lock must be on or off\n"
+            );
+
+            return 2;
+        }
+
+        if (
+            [argument
                 isEqualToString:@"seek"]
         ) {
             if (argc < 3) {
@@ -2200,7 +2602,7 @@ int main(int argc, char *argv[]) {
             [argument
                 isEqualToString:@"resume"]
         ) {
-            return resumeAtFullVolume();
+            return resumeWithVolumePolicy();
         }
 
         if (
@@ -2290,6 +2692,13 @@ int main(int argc, char *argv[]) {
         if (
             [argument
                 isEqualToString:
+                    @"airplay-disconnect"]
+        ) {
+            return disconnectAirPlay();
+        }
+        if (
+            [argument
+                isEqualToString:
                     @"airplay-rt4817"]
         ) {
             return connectDefaultAirPlayDevice();
@@ -2315,6 +2724,14 @@ int main(int argc, char *argv[]) {
                 isEqualToString:@"lock-device"]
         ) {
             return lockDeviceOnly();
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"play"]
+        ) {
+            return resumeWithVolumePolicy();
         }
 
         NSDictionary<NSString *, NSNumber *> *commands = @{

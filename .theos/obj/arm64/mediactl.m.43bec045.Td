@@ -80,7 +80,8 @@
   /opt/theos/vendor/include/GeoServices/module.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/compact_unwind_encoding.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap \
-  /home/joel/webremote/rt4817_request.h
+  /home/joel/webremote/rt4817_request.h \
+  /home/joel/webremote/ipad_speaker_request.h
 
 /opt/theos/Prefix.pch:
 
@@ -245,3 +246,5 @@
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap:
 
 /home/joel/webremote/rt4817_request.h:
+
+/home/joel/webremote/ipad_speaker_request.h:

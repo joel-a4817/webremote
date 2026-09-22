@@ -1,17 +1,17 @@
 {
   "event": "outbound-airplay-request",
-  "timestamp": "2026-09-21T07:15:51.280Z",
-  "pid": 3125,
-  "threadID": 259,
+  "timestamp": "2026-09-22T00:55:28.981Z",
+  "pid": 11441,
+  "threadID": 33055,
   "api": "xpc_connection_send_message_with_reply",
-  "connection": "<connection: 0x3036785a0> { name = com.apple.mediaremoted.xpc, listener = false, pid = 42, euid = 501, egid = 501, asid = 0 }",
-  "message": "<dictionary: 0x302d28fc0> { count = 4, transaction: 0, voucher = 0x0, contents =\n\t\"MRXPC_CONTEXT_MODIFICATION_DATA_KEY\" => <data: 0x301c73900>: { length = 796 bytes, contents = 0x62706c6973743030d4010203040506070a58247665727369... }\n\t\"MRXPC_ROUTING_CONTEXT_UID_KEY\" => <string: 0x300725dd0> { length = 36, contents = \"577E1BCA-2D9B-41C2-A8F8-C515CE8072D4\" }\n\t\"MRXPC_MESSAGE_ID_KEY\" => <uint64: 0x3009fbc40>: 216172782113783848\n\t\"MRXPC_MESSAGE_CUSTOM_ID_KEY\" => <string: 0x3007266a0> { length = 36, contents = \"6186A9CE-C000-4D3F-9062-2F959A707980\" }\n}",
+  "connection": "<connection: 0x302d882d0> { name = com.apple.mediaremoted.xpc, listener = false, pid = 42, euid = 501, egid = 501, asid = 0 }",
+  "message": "<dictionary: 0x3036cc300> { count = 4, transaction: 0, voucher = 0x0, contents =\n\t\"MRXPC_CONTEXT_MODIFICATION_DATA_KEY\" => <data: 0x3007fcb80>: { length = 754 bytes, contents = 0x62706c6973743030d4010203040506070a58247665727369... }\n\t\"MRXPC_ROUTING_CONTEXT_UID_KEY\" => <string: 0x301cdc630> { length = 36, contents = \"577E1BCA-2D9B-41C2-A8F8-C515CE8072D4\" }\n\t\"MRXPC_MESSAGE_ID_KEY\" => <uint64: 0x3012ccfc0>: 216172782113783848\n\t\"MRXPC_MESSAGE_CUSTOM_ID_KEY\" => <string: 0x301cddc20> { length = 36, contents = \"DE33B7A5-3ABE-4A4F-B84F-1195A8E776CB\" }\n}",
   "messageID": "216172782113783848",
-  "customID": "6186A9CE-C000-4D3F-9062-2F959A707980",
+  "customID": "DE33B7A5-3ABE-4A4F-B84F-1195A8E776CB",
   "routingContextUID": "577E1BCA-2D9B-41C2-A8F8-C515CE8072D4",
   "modificationData": {
-    "length": 796,
-    "sha256": "37f1b02b6721864e8603f6427166ed332ca58320c68fb1220f67818d22eb5924"
+    "length": 754,
+    "sha256": "039d690f9fe3d09014a702527d0f1c162c2ca088bef45ecb86e3be57f9023fc9"
   },
   "stack": [
     {
@@ -27,56 +27,40 @@
       "symbol": "0x1acbc88bc"
     },
     {
-      "address": "0x1acccb2d0",
-      "symbol": "0x1acccb2d0"
+      "address": "0x1acc34d84",
+      "symbol": "0x1acc34d84"
     },
     {
-      "address": "0x1acccbbb4",
-      "symbol": "0x1acccbbb4"
+      "address": "0x1acb65294",
+      "symbol": "0x1acb65294"
     },
     {
-      "address": "0x1accbc754",
-      "symbol": "0x1accbc754"
+      "address": "0x1c150f724",
+      "symbol": "0x1c150f724"
     },
     {
-      "address": "0x1accbc180",
-      "symbol": "0x1accbc180"
+      "address": "0x1a3751c9c",
+      "symbol": "0x1a3751c9c"
     },
     {
-      "address": "0x1c150fe88",
-      "symbol": "0x1c150fe88"
+      "address": "0x1a3752cc0",
+      "symbol": "0x1a3752cc0"
     },
     {
-      "address": "0x1acfb2bf4",
-      "symbol": "0x1acfb2bf4"
+      "address": "0x1a36f6658",
+      "symbol": "0x1a36f6658"
     },
     {
-      "address": "0x1acec9b8c",
-      "symbol": "0x1acec9b8c"
+      "address": "0x1a3703450",
+      "symbol": "0x1a3703450"
     },
     {
-      "address": "0x1acfb27a8",
-      "symbol": "0x1acfb27a8"
+      "address": "0x1a3703c3c",
+      "symbol": "0x1a3703c3c"
     },
     {
-      "address": "0x1acfb199c",
-      "symbol": "0x1acfb199c"
-    },
-    {
-      "address": "0x1acfb10fc",
-      "symbol": "0x1acfb10fc"
-    },
-    {
-      "address": "0x1c152db18",
-      "symbol": "0x1c152db18"
-    },
-    {
-      "address": "0x1acfafafc",
-      "symbol": "0x1acfafafc"
-    },
-    {
-      "address": "0x1acfaec10",
-      "symbol": "0x1acfaec10"
+      "address": "0x1f17be4f8",
+      "symbol": "0x1f17be4f8"
     }
   ]
 }

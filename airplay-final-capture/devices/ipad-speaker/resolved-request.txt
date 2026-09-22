@@ -1,0 +1,42 @@
+{
+  "request": {
+    "$class": {
+      "$classname": "MRGroupTopologyModificationRequest",
+      "$classes": [
+        "MRGroupTopologyModificationRequest",
+        "NSObject"
+      ]
+    },
+    "protobuf": {
+      "data": {
+        "NS.data": {
+          "$bytesHex": "0a5a0a1e4f7574707574436f6e746578742e7365744f757470757444657669636573122444453333423741352d334142452d344134462d423834462d3131393541384537373643421a08696e2d766964656f2019288093888303300010031a07537065616b65722000300038004000",
+          "$length": 111
+        },
+        "$class": {
+          "$classname": "NSMutableData",
+          "$classes": [
+            "NSMutableData",
+            "NSData",
+            "NSObject"
+          ]
+        }
+      },
+      "$class": {
+        "$classname": "_MRGroupTopologyModificationRequestProtobuf",
+        "$classes": [
+          "_MRGroupTopologyModificationRequestProtobuf",
+          "PBCodable",
+          "NSObject"
+        ]
+      }
+    }
+  },
+  "$class": {
+    "$classname": "MRAVOutputContextModification",
+    "$classes": [
+      "MRAVOutputContextModification",
+      "NSObject"
+    ]
+  }
+}

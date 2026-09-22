@@ -1,0 +1,13 @@
+{
+  "captureType": "return-to-local-ipad-speaker",
+  "payloadBytes": 754,
+  "sha256": "039d690f9fe3d09014a702527d0f1c162c2ca088bef45ecb86e3be57f9023fc9",
+  "validBinaryPlist": true,
+  "archiveKeys": [
+    "$archiver",
+    "$objects",
+    "$top",
+    "$version"
+  ],
+  "rt4817BaseUIDOffsets": []
+}

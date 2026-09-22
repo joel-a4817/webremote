@@ -54,7 +54,11 @@ PAGE = r"""<!doctype html>
 }
 
 html {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   overflow-y: scroll;
+  overscroll-behavior-x: none;
   scrollbar-color:
     rgba(255, 255, 255, .34)
     rgba(255, 255, 255, .07);
@@ -87,7 +91,12 @@ html {
 }
 
 body {
+  width: 100%;
+  max-width: 100%;
   margin: 0;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
   min-height: 100svh;
 
   padding:
@@ -108,7 +117,9 @@ body {
 
 main {
   width: min(100%, 480px);
+  max-width: 100%;
   margin: 0 auto;
+  overflow-x: hidden;
 }
 
 .hidden {
@@ -170,6 +181,9 @@ h1 {
 
 #playback-seek {
   --seek-progress: 0%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 
   display: block;
   width: 100%;
@@ -221,6 +235,132 @@ h1 {
   color: #aaa7b7;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.volume-control {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, .10);
+}
+
+.volume-slider-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 18px;
+  gap: 5px;
+  align-items: center;
+  width: calc(100% + 22px);
+  margin-left: -11px;
+}
+
+.volume-icon {
+  color: #d6d3de;
+  font-size: 17px;
+  line-height: 1;
+  text-align: center;
+  pointer-events: none;
+}
+
+#volume-slider {
+  --volume-progress: 100%;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#volume-slider::-webkit-slider-runnable-track {
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #ffffff 0%,
+    #ffffff var(--volume-progress),
+    rgba(255, 255, 255, .22) var(--volume-progress),
+    rgba(255, 255, 255, .22) 100%
+  );
+}
+
+#volume-slider::-webkit-slider-thumb {
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  border: 0;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 2px 9px rgba(0, 0, 0, .42);
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+#volume-slider:disabled {
+  opacity: .42;
+}
+
+.volume-lock-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.volume-lock-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.volume-switch {
+  position: relative;
+  width: 52px;
+  height: 30px;
+  flex: 0 0 52px;
+  touch-action: manipulation;
+}
+
+.volume-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.volume-switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .20);
+  transition: background .18s ease;
+}
+
+.volume-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, .34);
+  transition: transform .18s ease;
+}
+
+.volume-switch input:checked + .volume-switch-track {
+  background: #7b5cff;
+}
+
+.volume-switch input:checked + .volume-switch-track::after {
+  transform: translateX(22px);
 }
 
 .controls {
@@ -500,6 +640,14 @@ button:active {
     );
 }
 
+#disconnect-airplay {
+  background:
+    linear-gradient(
+      135deg,
+      #687080,
+      #343846
+    );
+}
 #restart-music {
   background:
     linear-gradient(
@@ -563,6 +711,46 @@ button:active {
         <div class="playback-times">
           <span id="playback-elapsed">0:00</span>
           <span id="playback-duration">0:00</span>
+        </div>
+      </div>
+
+      <div class="volume-control">
+        <div class="volume-slider-row">
+          <span
+            class="volume-icon"
+            aria-hidden="true"
+          >🔈</span>
+
+          <input
+            id="volume-slider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="100"
+            aria-label="Music volume"
+          >
+
+          <span
+            class="volume-icon"
+            aria-hidden="true"
+          >🔊</span>
+        </div>
+
+
+        <div class="volume-lock-row">
+          <span class="volume-lock-label">
+            Lock volume at 100%
+          </span>
+
+          <label class="volume-switch">
+            <input
+              id="volume-lock"
+              type="checkbox"
+              aria-label="Lock volume at 100 percent"
+            >
+            <span class="volume-switch-track"></span>
+          </label>
         </div>
       </div>
     </div>
@@ -640,6 +828,13 @@ button:active {
         Restart Music
       </button>
 
+      <button
+        id="disconnect-airplay"
+        class="system-button"
+        type="button"
+      >
+        Disconnect AirPlay
+      </button>
       <button
         id="lock-device"
         class="system-button"
@@ -748,6 +943,14 @@ const playbackDuration =
   document.querySelector(
     "#playback-duration"
   );
+const volumeSlider =
+  document.querySelector(
+    "#volume-slider"
+  );
+const volumeLock =
+  document.querySelector(
+    "#volume-lock"
+  );
 
 const toggleButton =
   document.querySelector("#toggle");
@@ -782,6 +985,10 @@ const restartMusicButton =
     "#restart-music"
   );
 
+const disconnectAirPlayButton =
+  document.querySelector(
+    "#disconnect-airplay"
+  );
 const lockDeviceButton =
   document.querySelector(
     "#lock-device"
@@ -1065,6 +1272,176 @@ playbackSeek.addEventListener(
   commitPlaybackSeek
 );
 
+
+let volumeTimer = null;
+let volumeRequestInFlight = false;
+let pendingVolume = null;
+let volumeDragActive = false;
+let volumeHoldUntil = 0;
+
+function renderVolumeState(percent, locked) {
+  const numeric = Number(percent);
+  const safe = Number.isFinite(numeric)
+    ? Math.max(0, Math.min(100, numeric))
+    : 0;
+  const shown = locked ? 100 : safe;
+
+  if (
+    locked
+    || (
+      !volumeDragActive
+      && Date.now() >= volumeHoldUntil
+    )
+  ) {
+    volumeSlider.value = String(shown);
+  }
+  volumeSlider.style.setProperty(
+    "--volume-progress",
+    shown + "%"
+  );
+  volumeSlider.disabled = Boolean(locked);
+  volumeLock.checked = Boolean(locked);
+  volumeSlider.setAttribute(
+    "aria-label",
+    locked
+      ? "Volume locked at 100 percent"
+      : "Music volume"
+  );
+}
+
+async function loadVolumeState() {
+  try {
+    const result = await readJSON("/api/volume");
+    renderVolumeState(
+      result.percent,
+      result.locked
+    );
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+async function sendVolume(percent) {
+  if (volumeLock.checked) {
+    renderVolumeState(100, true);
+    setStatus("Volume locked at 100%");
+    return;
+  }
+
+  if (volumeRequestInFlight) {
+    pendingVolume = percent;
+    return;
+  }
+
+  volumeRequestInFlight = true;
+  try {
+    const result = await readJSON(
+      "/api/volume",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          percent: percent
+        })
+      }
+    );
+    volumeHoldUntil = Date.now() + 1500;
+    renderVolumeState(
+      result.locked ? 100 : percent,
+      result.locked
+    );
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    volumeRequestInFlight = false;
+    if (pendingVolume !== null) {
+      const next = pendingVolume;
+      pendingVolume = null;
+      sendVolume(next);
+    }
+  }
+}
+
+function queueVolume() {
+  const percent = Number(volumeSlider.value);
+  volumeHoldUntil = Date.now() + 1500;
+  volumeSlider.style.setProperty(
+    "--volume-progress",
+    percent + "%"
+  );
+  if (volumeTimer !== null) {
+    clearTimeout(volumeTimer);
+  }
+  volumeTimer = setTimeout(
+    () => {
+      volumeTimer = null;
+      sendVolume(percent);
+    },
+    90
+  );
+}
+
+volumeSlider.addEventListener(
+  "pointerdown",
+  () => {
+    volumeDragActive = true;
+  }
+);
+volumeSlider.addEventListener(
+  "touchstart",
+  () => {
+    volumeDragActive = true;
+  },
+  { passive: true }
+);
+volumeSlider.addEventListener("input", queueVolume);
+volumeSlider.addEventListener(
+  "change",
+  () => {
+    volumeDragActive = false;
+    if (volumeTimer !== null) {
+      clearTimeout(volumeTimer);
+      volumeTimer = null;
+    }
+    sendVolume(Number(volumeSlider.value));
+  }
+);
+
+volumeLock.addEventListener(
+  "change",
+  async () => {
+    const requested = volumeLock.checked;
+    volumeLock.disabled = true;
+    try {
+      const result = await readJSON(
+        "/api/volume-lock",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            locked: requested
+          })
+        }
+      );
+      renderVolumeState(result.percent, result.locked);
+      setStatus(
+        result.locked
+          ? "Volume locked at 100%"
+          : "Volume lock off"
+      );
+    } catch (error) {
+      volumeLock.checked = !requested;
+      setStatus(error.message);
+    } finally {
+      volumeLock.disabled = false;
+      loadVolumeState();
+    }
+  }
+);
 
 function setToggleState(isPlaying) {
   toggleButton.innerHTML =
@@ -1753,6 +2130,17 @@ connectAirPlayButton.addEventListener(
   }
 );
 
+disconnectAirPlayButton.addEventListener(
+  "click",
+  () => {
+    runSystemAction(
+      disconnectAirPlayButton,
+      "/api/airplay/disconnect",
+      "Disconnecting…",
+      "AirPlay disconnected"
+    );
+  }
+);
 restartMusicButton.addEventListener(
   "click",
   () => {
@@ -1779,10 +2167,24 @@ lockDeviceButton.addEventListener(
 
 loadPlaylists();
 updateNowPlaying();
+loadVolumeState();
 
 setInterval(
   updateNowPlaying,
   2000
+);
+setInterval(
+  () => {
+    if (
+      !volumeDragActive
+      && !volumeRequestInFlight
+      && pendingVolume === null
+      && Date.now() >= volumeHoldUntil
+    ) {
+      loadVolumeState();
+    }
+  },
+  750
 );
 </script>
 </body>
@@ -1790,13 +2192,21 @@ setInterval(
 """
 
 
-def execute(arguments):
-    return run(
-        [MEDIACTL, *arguments],
-        capture_output=True,
-        text=True,
-        timeout=10
-    )
+def execute(arguments, timeout=10):
+    try:
+        return run(
+            [MEDIACTL, *arguments],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        return subprocess.CompletedProcess(
+            error.cmd,
+            124,
+            error.stdout or "",
+            "mediactl timed out",
+        )
 
 
 
@@ -1914,6 +2324,11 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/api/volume":
+            self.mediactl_json(
+                ["volume-json"]
+            )
+            return
         if path == "/api/now-playing":
             self.mediactl_json(
                 ["now-playing-json"]
@@ -2041,6 +2456,116 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        if path == "/api/volume":
+            try:
+                payload = self.read_json_body()
+                percent = float(payload["percent"])
+                if percent < 0 or percent > 100:
+                    raise ValueError
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": "Invalid volume",
+                    },
+                )
+                return
+
+            result = execute(
+                ["volume", str(percent / 100.0)]
+            )
+            if result.returncode != 0:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "Volume change failed"
+                        ),
+                    },
+                )
+                return
+
+            try:
+                response = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": "Invalid volume response",
+                    },
+                )
+                return
+
+            response["ok"] = True
+            self.send_json(200, response)
+            return
+
+        if path == "/api/volume-lock":
+            try:
+                payload = self.read_json_body()
+                locked = payload["locked"]
+                if not isinstance(locked, bool):
+                    raise TypeError
+            except (
+                KeyError,
+                TypeError,
+                json.JSONDecodeError,
+            ):
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": "Invalid volume lock",
+                    },
+                )
+                return
+
+            result = execute(
+                [
+                    "volume-lock",
+                    "on" if locked else "off",
+                ]
+            )
+            if result.returncode != 0:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "Volume lock change failed"
+                        ),
+                    },
+                )
+                return
+
+            try:
+                response = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": "Invalid volume lock response",
+                    },
+                )
+                return
+
+            response["ok"] = True
+            self.send_json(200, response)
+            return
 
         if path == "/api/seek":
             try:
@@ -2247,6 +2772,35 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/api/airplay/disconnect":
+            result = execute(
+                ["airplay-disconnect"]
+            )
+            succeeded = (
+                result.returncode == 0
+            )
+            self.send_json(
+                200 if succeeded else 500,
+                {
+                    "ok": succeeded,
+                    "message": (
+                        "AirPlay disconnected"
+                        if succeeded
+                        else ""
+                    ),
+                    "stdout": result.stdout.strip(),
+                    "error": (
+                        ""
+                        if succeeded
+                        else (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "AirPlay disconnect failed"
+                        )
+                    ),
+                },
+            )
+            return
         if path == "/api/airplay/connect":
             result = execute(
                 ["airplay-rt4817"]
