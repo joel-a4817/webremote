@@ -9,11 +9,6 @@ static CFStringRef const LockNotification =
         "com.joel.mediactl.lock-device"
     );
 
-static CFStringRef const WakeNotification =
-    CFSTR(
-        "com.joel.mediactl.wake-screen"
-    );
-
 static CFStringRef const HomeNotification =
     CFSTR(
         "com.joel.mediactl.home-screen"
@@ -317,121 +312,6 @@ static void receivedHomeNotification(
 }
 
 
-static void wakeDevice(void) {
-    writeStatus(@"wakeDevice entered");
-
-    Class backlightClass =
-        objc_getClass("SBBacklightController");
-    SEL sharedSelector =
-        sel_registerName("sharedInstance");
-
-    if (
-        backlightClass != Nil &&
-        class_respondsToSelector(
-            object_getClass(backlightClass),
-            sharedSelector
-        )
-    ) {
-        id backlight =
-            ((id (*)(id, SEL))objc_msgSend)(
-                backlightClass,
-                sharedSelector
-            );
-        SEL wakeSelector =
-            sel_registerName(
-                "turnOnScreenFullyWithBacklightSource:"
-            );
-
-        if (
-            backlight != nil &&
-            [backlight respondsToSelector:wakeSelector]
-        ) {
-            ((void (*)(id, SEL, long long))objc_msgSend)(
-                backlight,
-                wakeSelector,
-                1
-            );
-            writeStatus(@"backlight wake sent");
-        } else {
-            writeStatus(@"backlight wake selector missing");
-        }
-    } else {
-        writeStatus(@"SBBacklightController missing");
-    }
-
-    dispatch_after(
-        dispatch_time(
-            DISPATCH_TIME_NOW,
-            350 * NSEC_PER_MSEC
-        ),
-        dispatch_get_main_queue(),
-        ^{
-            Class managerClass =
-                objc_getClass("SBLockScreenManager");
-
-            if (
-                managerClass == Nil ||
-                !class_respondsToSelector(
-                    object_getClass(managerClass),
-                    sharedSelector
-                )
-            ) {
-                writeStatus(@"unlock manager missing");
-                return;
-            }
-
-            id manager =
-                ((id (*)(id, SEL))objc_msgSend)(
-                    managerClass,
-                    sharedSelector
-                );
-            SEL unlockSelector =
-                sel_registerName(
-                    "unlockUIFromSource:withOptions:"
-                );
-
-            if (
-                manager != nil &&
-                [manager respondsToSelector:unlockSelector]
-            ) {
-                ((void (*)(
-                    id,
-                    SEL,
-                    NSUInteger,
-                    NSDictionary *
-                ))objc_msgSend)(
-                    manager,
-                    unlockSelector,
-                    1,
-                    @{}
-                );
-                writeStatus(@"unsecured unlock sent");
-            } else {
-                writeStatus(@"unlock selector missing");
-            }
-        }
-    );
-}
-
-
-static void receivedWakeNotification(
-    CFNotificationCenterRef center,
-    void *observer,
-    CFStringRef name,
-    const void *object,
-    CFDictionaryRef userInfo
-) {
-    writeStatus(@"wake notification received");
-
-    dispatch_async(
-        dispatch_get_main_queue(),
-        ^{
-            wakeDevice();
-        }
-    );
-}
-
-
 static void receivedLockNotification(
     CFNotificationCenterRef center,
     void *observer,
@@ -476,15 +356,6 @@ static void receivedLockNotification(
             NULL,
             receivedLockNotification,
             LockNotification,
-            NULL,
-            CFNotificationSuspensionBehaviorDeliverImmediately
-        );
-
-        CFNotificationCenterAddObserver(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            NULL,
-            receivedWakeNotification,
-            WakeNotification,
             NULL,
             CFNotificationSuspensionBehaviorDeliverImmediately
         );

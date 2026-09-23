@@ -135,7 +135,6 @@ static void printUsage(void) {
         "  mediactl song <persistent-id> \"Playlist Name\"\n"
         "  mediactl now-playing-json\n"
         "  mediactl lock-device\n"
-        "  mediactl wake-screen\n"
         "  mediactl home-screen\n"
         "  mediactl airplay-rt4817\n"
         "  mediactl airplay-devices-json\n"
@@ -2325,22 +2324,6 @@ static int showHomeScreen(void) {
 }
 
 
-static int wakeScreen(void) {
-    CFNotificationCenterPostNotification(
-        CFNotificationCenterGetDarwinNotifyCenter(),
-        CFSTR(
-            "com.joel.mediactl.wake-screen"
-        ),
-        NULL,
-        NULL,
-        true
-    );
-
-    printf("SpringBoard wake request sent\n");
-    return 0;
-}
-
-
 static int lockDeviceOnly(void) {
     CFNotificationCenterPostNotification(
         CFNotificationCenterGetDarwinNotifyCenter(),
@@ -2748,14 +2731,6 @@ int main(int argc, char *argv[]) {
                     @"home-screen"]
         ) {
             return showHomeScreen();
-        }
-
-        if (
-            [argument
-                isEqualToString:
-                    @"wake-screen"]
-        ) {
-            return wakeScreen();
         }
 
         if (

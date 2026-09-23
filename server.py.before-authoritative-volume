@@ -1275,28 +1275,27 @@ playbackSeek.addEventListener(
 
 let volumeTimer = null;
 let volumeRequestInFlight = false;
-let volumeReadInFlight = false;
 let pendingVolume = null;
 let volumeDragActive = false;
-let volumeReadSequence = 0;
+let volumeHoldUntil = 0;
 
-
-function drawVolume(percent) {
+function renderVolumeState(percent, boostOnPlay) {
   const numeric = Number(percent);
   const safe = Number.isFinite(numeric)
     ? Math.max(0, Math.min(100, numeric))
     : 0;
 
-  volumeSlider.value = String(safe);
+  if (
+    !volumeDragActive
+    && Date.now() >= volumeHoldUntil
+  ) {
+    volumeSlider.value = String(safe);
+  }
+
   volumeSlider.style.setProperty(
     "--volume-progress",
     safe + "%"
   );
-}
-
-
-function renderVolumeState(percent, boostOnPlay) {
-  drawVolume(percent);
   volumeSlider.disabled = false;
   volumeLock.checked = Boolean(boostOnPlay);
   volumeSlider.setAttribute(
@@ -1305,63 +1304,26 @@ function renderVolumeState(percent, boostOnPlay) {
   );
 }
 
-
-async function loadVolumeState(force = false) {
-  if (
-    volumeReadInFlight
-    || (!force && (
-      volumeDragActive
-      || volumeRequestInFlight
-      || pendingVolume !== null
-    ))
-  ) {
-    return;
-  }
-
-  volumeReadInFlight = true;
-  const sequence = ++volumeReadSequence;
-
+async function loadVolumeState() {
   try {
     const result = await readJSON("/api/volume");
-
-    if (
-      sequence !== volumeReadSequence
-      || (!force && (
-        volumeDragActive
-        || volumeRequestInFlight
-        || pendingVolume !== null
-      ))
-    ) {
-      return;
-    }
-
-    /* Always display the system volume reported by the iPad. */
     renderVolumeState(
       result.percent,
       result.locked
     );
   } catch (error) {
     setStatus(error.message);
-  } finally {
-    volumeReadInFlight = false;
   }
 }
 
-
 async function sendVolume(percent) {
-  const requested = Math.max(
-    0,
-    Math.min(100, Number(percent))
-  );
 
   if (volumeRequestInFlight) {
-    pendingVolume = requested;
+    pendingVolume = percent;
     return;
   }
 
   volumeRequestInFlight = true;
-  volumeReadSequence += 1;
-
   try {
     const result = await readJSON(
       "/api/volume",
@@ -1371,12 +1333,11 @@ async function sendVolume(percent) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          percent: requested
+          percent: percent
         })
       }
     );
-
-    /* POST also returns the iPad's observed system volume. */
+    volumeHoldUntil = Date.now() + 1500;
     renderVolumeState(
       result.percent,
       result.locked
@@ -1385,32 +1346,24 @@ async function sendVolume(percent) {
     setStatus(error.message);
   } finally {
     volumeRequestInFlight = false;
-
     if (pendingVolume !== null) {
       const next = pendingVolume;
       pendingVolume = null;
       sendVolume(next);
-      return;
     }
-
-    setTimeout(
-      () => loadVolumeState(true),
-      150
-    );
   }
 }
 
-
 function queueVolume() {
   const percent = Number(volumeSlider.value);
-
-  /* Local movement is shown only while the user is actively dragging. */
-  drawVolume(percent);
-
+  volumeHoldUntil = Date.now() + 1500;
+  volumeSlider.style.setProperty(
+    "--volume-progress",
+    percent + "%"
+  );
   if (volumeTimer !== null) {
     clearTimeout(volumeTimer);
   }
-
   volumeTimer = setTimeout(
     () => {
       volumeTimer = null;
@@ -1420,55 +1373,37 @@ function queueVolume() {
   );
 }
 
-
-function beginVolumeDrag() {
-  volumeDragActive = true;
-  volumeReadSequence += 1;
-}
-
-
 volumeSlider.addEventListener(
   "pointerdown",
-  beginVolumeDrag
+  () => {
+    volumeDragActive = true;
+  }
 );
-
-
 volumeSlider.addEventListener(
   "touchstart",
-  beginVolumeDrag,
+  () => {
+    volumeDragActive = true;
+  },
   { passive: true }
 );
-
-
-volumeSlider.addEventListener(
-  "input",
-  queueVolume
-);
-
-
+volumeSlider.addEventListener("input", queueVolume);
 volumeSlider.addEventListener(
   "change",
   () => {
     volumeDragActive = false;
-
     if (volumeTimer !== null) {
       clearTimeout(volumeTimer);
       volumeTimer = null;
     }
-
-    sendVolume(
-      Number(volumeSlider.value)
-    );
+    sendVolume(Number(volumeSlider.value));
   }
 );
-
 
 volumeLock.addEventListener(
   "change",
   async () => {
     const requested = volumeLock.checked;
     volumeLock.disabled = true;
-
     try {
       const result = await readJSON(
         "/api/volume-lock",
@@ -1482,11 +1417,7 @@ volumeLock.addEventListener(
           })
         }
       );
-
-      renderVolumeState(
-        result.percent,
-        result.locked
-      );
+      renderVolumeState(result.percent, result.locked);
       setStatus(
         result.locked
           ? "100% on Play enabled"
@@ -1497,11 +1428,10 @@ volumeLock.addEventListener(
       setStatus(error.message);
     } finally {
       volumeLock.disabled = false;
-      loadVolumeState(true);
+      loadVolumeState();
     }
   }
 );
-
 
 function setToggleState(isPlaying) {
   toggleButton.innerHTML =
@@ -2234,8 +2164,17 @@ setInterval(
   2000
 );
 setInterval(
-  loadVolumeState,
-  500
+  () => {
+    if (
+      !volumeDragActive
+      && !volumeRequestInFlight
+      && pendingVolume === null
+      && Date.now() >= volumeHoldUntil
+    ) {
+      loadVolumeState();
+    }
+  },
+  750
 );
 </script>
 </body>
@@ -2886,8 +2825,63 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/device/home":
+            # Launching Music wakes and refreshes the display path used
+            # by VNC. Immediately follow it with the native Home action.
+            wake_result = None
+
+            for uiopen_path in (
+                "/var/jb/usr/bin/uiopen",
+                "/usr/bin/uiopen",
+            ):
+                if not Path(uiopen_path).exists():
+                    continue
+
+                try:
+                    wake_result = subprocess.run(
+                        [
+                            uiopen_path,
+                            "music://show-now-playing",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                except subprocess.TimeoutExpired:
+                    wake_result = subprocess.CompletedProcess(
+                        [uiopen_path],
+                        124,
+                        "",
+                        "uiopen timed out",
+                    )
+                break
+
+            if wake_result is None:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": "uiopen was not found",
+                    },
+                )
+                return
+
+            if wake_result.returncode != 0:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": (
+                            wake_result.stderr.strip()
+                            or wake_result.stdout.strip()
+                            or "Could not wake the iPad display"
+                        ),
+                    },
+                )
+                return
+
+            time.sleep(0.8)
             result = execute(
-                ["wake-screen"]
+                ["home-screen"]
             )
             succeeded = result.returncode == 0
 
@@ -2907,7 +2901,7 @@ class Handler(BaseHTTPRequestHandler):
                         else (
                             result.stderr.strip()
                             or result.stdout.strip()
-                            or "Could not wake iPad"
+                            or "Could not open Home screen"
                         )
                     ),
                 },

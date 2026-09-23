@@ -2886,8 +2886,63 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/device/home":
+            # Launching Music wakes and refreshes the display path used
+            # by VNC. Immediately follow it with the native Home action.
+            wake_result = None
+
+            for uiopen_path in (
+                "/var/jb/usr/bin/uiopen",
+                "/usr/bin/uiopen",
+            ):
+                if not Path(uiopen_path).exists():
+                    continue
+
+                try:
+                    wake_result = subprocess.run(
+                        [
+                            uiopen_path,
+                            "music://show-now-playing",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                except subprocess.TimeoutExpired:
+                    wake_result = subprocess.CompletedProcess(
+                        [uiopen_path],
+                        124,
+                        "",
+                        "uiopen timed out",
+                    )
+                break
+
+            if wake_result is None:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": "uiopen was not found",
+                    },
+                )
+                return
+
+            if wake_result.returncode != 0:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": (
+                            wake_result.stderr.strip()
+                            or wake_result.stdout.strip()
+                            or "Could not wake the iPad display"
+                        ),
+                    },
+                )
+                return
+
+            time.sleep(0.8)
             result = execute(
-                ["wake-screen"]
+                ["home-screen"]
             )
             succeeded = result.returncode == 0
 
@@ -2907,7 +2962,7 @@ class Handler(BaseHTTPRequestHandler):
                         else (
                             result.stderr.strip()
                             or result.stdout.strip()
-                            or "Could not wake iPad"
+                            or "Could not open Home screen"
                         )
                     ),
                 },
