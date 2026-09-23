@@ -1278,12 +1278,6 @@ let volumeRequestInFlight = false;
 let volumeReadInFlight = false;
 let pendingVolume = null;
 let volumeDragActive = false;
-let volumeReadSequence = 0;
-let volumeTarget = null;
-let volumeTargetExpires = 0;
-let lastAcceptedVolume = null;
-let reportedVolumeCandidate = null;
-let reportedVolumeCandidateCount = 0;
 
 function clampVolume(value) {
   const numeric = Number(value);
@@ -1301,108 +1295,34 @@ function drawVolume(value) {
   );
 }
 
-function renderVolumeState(percent, boostOnPlay) {
-  drawVolume(percent);
+function applyVolumeReport(result) {
+  if (!volumeDragActive) {
+    drawVolume(result.percent);
+  }
+
   volumeSlider.disabled = false;
-  volumeLock.checked = Boolean(boostOnPlay);
+  volumeLock.checked = Boolean(result.locked);
   volumeSlider.setAttribute(
     "aria-label",
     "iPad volume"
   );
 }
 
-function resolveReportedVolume(reportedPercent) {
-  const reported = clampVolume(reportedPercent);
-
-  if (
-    volumeTarget !== null
-    && Date.now() < volumeTargetExpires
-  ) {
-    if (Math.abs(reported - volumeTarget) <= 3) {
-      lastAcceptedVolume = reported;
-      volumeTarget = null;
-      volumeTargetExpires = 0;
-      reportedVolumeCandidate = null;
-      reportedVolumeCandidateCount = 0;
-      return reported;
-    }
-
-    return volumeTarget;
-  }
-
-  volumeTarget = null;
-  volumeTargetExpires = 0;
-
-  if (lastAcceptedVolume === null) {
-    lastAcceptedVolume = reported;
-    return reported;
-  }
-
-  if (Math.abs(reported - lastAcceptedVolume) <= 2) {
-    lastAcceptedVolume = reported;
-    reportedVolumeCandidate = null;
-    reportedVolumeCandidateCount = 0;
-    return reported;
-  }
-
-  if (
-    reportedVolumeCandidate !== null
-    && Math.abs(reported - reportedVolumeCandidate) <= 2
-  ) {
-    reportedVolumeCandidateCount += 1;
-  } else {
-    reportedVolumeCandidate = reported;
-    reportedVolumeCandidateCount = 1;
-  }
-
-  /*
-   * Require three consecutive iPad reports before accepting a large
-   * unsolicited jump. This rejects one-off stale 100% reads while still
-   * following genuine hardware-button or Control Center changes.
-   */
-  if (reportedVolumeCandidateCount >= 3) {
-    lastAcceptedVolume = reported;
-    reportedVolumeCandidate = null;
-    reportedVolumeCandidateCount = 0;
-    return reported;
-  }
-
-  return lastAcceptedVolume;
-}
-
-async function loadVolumeState(force = false) {
+async function loadVolumeState() {
   if (
     volumeReadInFlight
-    || (!force && (
-      volumeDragActive
-      || volumeRequestInFlight
-      || pendingVolume !== null
-    ))
+    || volumeDragActive
+    || volumeRequestInFlight
+    || pendingVolume !== null
   ) {
     return;
   }
 
   volumeReadInFlight = true;
-  const sequence = ++volumeReadSequence;
 
   try {
     const result = await readJSON("/api/volume");
-
-    if (
-      sequence !== volumeReadSequence
-      || (!force && (
-        volumeDragActive
-        || volumeRequestInFlight
-        || pendingVolume !== null
-      ))
-    ) {
-      return;
-    }
-
-    renderVolumeState(
-      resolveReportedVolume(result.percent),
-      result.locked
-    );
+    applyVolumeReport(result);
   } catch (error) {
     setStatus(error.message);
   } finally {
@@ -1419,16 +1339,9 @@ async function sendVolume(value) {
   }
 
   volumeRequestInFlight = true;
-  volumeReadSequence += 1;
-  volumeTarget = requested;
-  volumeTargetExpires = Date.now() + 4000;
-  lastAcceptedVolume = requested;
-  reportedVolumeCandidate = null;
-  reportedVolumeCandidateCount = 0;
-  drawVolume(requested);
 
   try {
-    const result = await readJSON(
+    await readJSON(
       "/api/volume",
       {
         method: "POST",
@@ -1440,14 +1353,7 @@ async function sendVolume(value) {
         })
       }
     );
-
-    renderVolumeState(
-      resolveReportedVolume(result.percent),
-      result.locked
-    );
   } catch (error) {
-    volumeTarget = null;
-    volumeTargetExpires = 0;
     setStatus(error.message);
   } finally {
     volumeRequestInFlight = false;
@@ -1459,10 +1365,7 @@ async function sendVolume(value) {
       return;
     }
 
-    setTimeout(
-      () => loadVolumeState(true),
-      250
-    );
+    setTimeout(loadVolumeState, 120);
   }
 }
 
@@ -1470,6 +1373,8 @@ function queueVolume() {
   const requested = clampVolume(
     volumeSlider.value
   );
+
+  /* During interaction only, mirror the browser's selected position. */
   drawVolume(requested);
 
   if (volumeTimer !== null) {
@@ -1487,7 +1392,6 @@ function queueVolume() {
 
 function beginVolumeDrag() {
   volumeDragActive = true;
-  volumeReadSequence += 1;
 }
 
 function finishVolumeDrag() {
@@ -1551,10 +1455,8 @@ volumeLock.addEventListener(
         }
       );
 
-      renderVolumeState(
-        resolveReportedVolume(result.percent),
-        result.locked
-      );
+      /* Toggle state is independent from the volume display. */
+      volumeLock.checked = Boolean(result.locked);
       setStatus(
         result.locked
           ? "100% on Play enabled"
@@ -1565,7 +1467,6 @@ volumeLock.addEventListener(
       setStatus(error.message);
     } finally {
       volumeLock.disabled = false;
-      loadVolumeState(true);
     }
   }
 );
@@ -1676,34 +1577,12 @@ async function updateNowPlaying() {
 
 async function sendTransport(command) {
   try {
-    const result = await readJSON(
+    await readJSON(
       "/api/" + command,
       {
         method: "POST"
       }
     );
-
-    const action =
-      command === "toggle"
-        ? result.action
-        : command;
-
-    if (
-      action === "play"
-      && volumeLock.checked
-    ) {
-      volumeTarget = 100;
-      volumeTargetExpires = Date.now() + 4000;
-      lastAcceptedVolume = 100;
-      reportedVolumeCandidate = null;
-      reportedVolumeCandidateCount = 0;
-      drawVolume(100);
-
-      setTimeout(
-        () => loadVolumeState(true),
-        180
-      );
-    }
 
     setStatus("Done");
     setTimeout(
@@ -2322,7 +2201,7 @@ setInterval(
 );
 setInterval(
   loadVolumeState,
-  500
+  350
 );
 </script>
 </body>
@@ -2479,23 +2358,15 @@ class Handler(BaseHTTPRequestHandler):
                 if not Path(uiopen_path).exists():
                     continue
 
-                try:
-                    open_music = subprocess.run(
-                        [
-                            uiopen_path,
-                            "music://show-now-playing",
-                        ],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                    )
-                except subprocess.TimeoutExpired as error:
-                    open_music = subprocess.CompletedProcess(
-                        error.cmd,
-                        124,
-                        error.stdout or "",
-                        "uiopen timed out",
-                    )
+                open_music = subprocess.run(
+                    [
+                        uiopen_path,
+                        "music://show-now-playing",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
                 break
 
             if open_music is None:
