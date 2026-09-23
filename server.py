@@ -1279,13 +1279,21 @@ let volumeReadInFlight = false;
 let pendingVolume = null;
 let volumeDragActive = false;
 let volumeReadSequence = 0;
+let volumeWriteTarget = null;
+let volumeWriteUntil = 0;
+
+
+function clampVolume(percent) {
+  const numeric = Number(percent);
+
+  return Number.isFinite(numeric)
+    ? Math.max(0, Math.min(100, numeric))
+    : 0;
+}
 
 
 function drawVolume(percent) {
-  const numeric = Number(percent);
-  const safe = Number.isFinite(numeric)
-    ? Math.max(0, Math.min(100, numeric))
-    : 0;
+  const safe = clampVolume(percent);
 
   volumeSlider.value = String(safe);
   volumeSlider.style.setProperty(
@@ -1303,6 +1311,37 @@ function renderVolumeState(percent, boostOnPlay) {
     "aria-label",
     "iPad volume"
   );
+}
+
+
+function acceptReportedVolume(percent) {
+  const reported = clampVolume(percent);
+
+  if (
+    volumeWriteTarget !== null
+    && Date.now() < volumeWriteUntil
+  ) {
+    const difference = Math.abs(
+      reported - volumeWriteTarget
+    );
+
+    if (difference <= 3) {
+      volumeWriteTarget = null;
+      volumeWriteUntil = 0;
+      return reported;
+    }
+
+    /*
+     * mediactl can briefly return its previous cached value after a
+     * successful system-volume write. Keep the requested value visible
+     * until the iPad reports the new value or the settle window ends.
+     */
+    return volumeWriteTarget;
+  }
+
+  volumeWriteTarget = null;
+  volumeWriteUntil = 0;
+  return reported;
 }
 
 
@@ -1335,9 +1374,8 @@ async function loadVolumeState(force = false) {
       return;
     }
 
-    /* Always display the system volume reported by the iPad. */
     renderVolumeState(
-      result.percent,
+      acceptReportedVolume(result.percent),
       result.locked
     );
   } catch (error) {
@@ -1349,10 +1387,7 @@ async function loadVolumeState(force = false) {
 
 
 async function sendVolume(percent) {
-  const requested = Math.max(
-    0,
-    Math.min(100, Number(percent))
-  );
+  const requested = clampVolume(percent);
 
   if (volumeRequestInFlight) {
     pendingVolume = requested;
@@ -1361,6 +1396,9 @@ async function sendVolume(percent) {
 
   volumeRequestInFlight = true;
   volumeReadSequence += 1;
+  volumeWriteTarget = requested;
+  volumeWriteUntil = Date.now() + 4000;
+  drawVolume(requested);
 
   try {
     const result = await readJSON(
@@ -1376,12 +1414,13 @@ async function sendVolume(percent) {
       }
     );
 
-    /* POST also returns the iPad's observed system volume. */
     renderVolumeState(
-      result.percent,
+      acceptReportedVolume(result.percent),
       result.locked
     );
   } catch (error) {
+    volumeWriteTarget = null;
+    volumeWriteUntil = 0;
     setStatus(error.message);
   } finally {
     volumeRequestInFlight = false;
@@ -1395,16 +1434,17 @@ async function sendVolume(percent) {
 
     setTimeout(
       () => loadVolumeState(true),
-      150
+      250
     );
   }
 }
 
 
 function queueVolume() {
-  const percent = Number(volumeSlider.value);
+  const percent = clampVolume(
+    volumeSlider.value
+  );
 
-  /* Local movement is shown only while the user is actively dragging. */
   drawVolume(percent);
 
   if (volumeTimer !== null) {
@@ -1427,39 +1467,48 @@ function beginVolumeDrag() {
 }
 
 
+function finishVolumeDrag() {
+  if (!volumeDragActive) {
+    return;
+  }
+
+  volumeDragActive = false;
+
+  if (volumeTimer !== null) {
+    clearTimeout(volumeTimer);
+    volumeTimer = null;
+  }
+
+  sendVolume(
+    volumeSlider.value
+  );
+}
+
+
 volumeSlider.addEventListener(
   "pointerdown",
   beginVolumeDrag
 );
-
-
 volumeSlider.addEventListener(
   "touchstart",
   beginVolumeDrag,
   { passive: true }
 );
-
-
 volumeSlider.addEventListener(
   "input",
   queueVolume
 );
-
-
 volumeSlider.addEventListener(
   "change",
-  () => {
-    volumeDragActive = false;
-
-    if (volumeTimer !== null) {
-      clearTimeout(volumeTimer);
-      volumeTimer = null;
-    }
-
-    sendVolume(
-      Number(volumeSlider.value)
-    );
-  }
+  finishVolumeDrag
+);
+volumeSlider.addEventListener(
+  "pointerup",
+  finishVolumeDrag
+);
+volumeSlider.addEventListener(
+  "touchend",
+  finishVolumeDrag
 );
 
 
@@ -1484,7 +1533,7 @@ volumeLock.addEventListener(
       );
 
       renderVolumeState(
-        result.percent,
+        acceptReportedVolume(result.percent),
         result.locked
       );
       setStatus(
@@ -1608,6 +1657,11 @@ async function updateNowPlaying() {
 }
 
 async function sendTransport(command) {
+  if (command === "toggle" || command === "play") {
+    volumeWriteTarget = null;
+    volumeWriteUntil = 0;
+  }
+
   try {
     await readJSON(
       "/api/" + command,
