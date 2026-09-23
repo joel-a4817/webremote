@@ -840,7 +840,7 @@ button:active {
         class="system-button"
         type="button"
       >
-        Wake iPad
+        Home Screen
       </button>
     </div>
 
@@ -2150,7 +2150,7 @@ homeDeviceButton.addEventListener(
       homeDeviceButton,
       "/api/device/home",
       "Waking…",
-      "iPad awakened"
+      "Home screen opened"
     );
   }
 );
@@ -2890,7 +2890,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": succeeded,
                     "message": (
-                        "iPad awakened"
+                        "Home screen opened"
                         if succeeded
                         else ""
                     ),
