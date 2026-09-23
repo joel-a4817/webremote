@@ -2102,7 +2102,34 @@ static double audioSessionOutputVolume(void) {
 }
 
 
+static double springBoardSystemVolume(void) {
+    NSDictionary *state = [NSDictionary
+        dictionaryWithContentsOfFile:
+            @"/var/mobile/MediaCtlSystemVolume.plist"];
+
+    NSNumber *value = state[@"volume"];
+    if (value == nil) {
+        return NAN;
+    }
+
+    double volume = value.doubleValue;
+    if (!isfinite(volume) || volume < 0.0 || volume > 1.0) {
+        return NAN;
+    }
+
+    return volume;
+}
+
+
 static double currentSystemVolume(void) {
+    double springBoardVolume =
+        springBoardSystemVolume();
+
+    if (isfinite(springBoardVolume)) {
+        saveKnownSystemVolume(springBoardVolume);
+        return springBoardVolume;
+    }
+
     /*
      * AVAudioSession.outputVolume is the authoritative system-output
      * volume exposed by iPadOS. It changes with the hardware buttons,

@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <math.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -19,6 +20,71 @@ static CFStringRef const HomeNotification =
         "com.joel.mediactl.home-screen"
     );
 
+
+static NSString *const SystemVolumePath =
+    @"/var/mobile/MediaCtlSystemVolume.plist";
+
+@interface AVSystemController : NSObject
++ (instancetype)sharedAVSystemController;
+- (BOOL)getVolume:(float *)volume
+    forCategory:(NSString *)category;
+@end
+
+static void saveSystemVolume(float volume) {
+    if (!isfinite(volume) || volume < 0.0f || volume > 1.0f) {
+        return;
+    }
+
+    [@{
+        @"volume": @(volume),
+        @"updated": @([[NSDate date] timeIntervalSince1970])
+    } writeToFile:SystemVolumePath atomically:YES];
+}
+
+static void captureCurrentSystemVolume(void) {
+    Class controllerClass =
+        NSClassFromString(@"AVSystemController");
+    if (
+        controllerClass == Nil ||
+        ![controllerClass respondsToSelector:
+            @selector(sharedAVSystemController)]
+    ) {
+        return;
+    }
+
+    AVSystemController *controller =
+        [controllerClass sharedAVSystemController];
+    float volume = 0.0f;
+    if (
+        controller != nil &&
+        [controller respondsToSelector:
+            @selector(getVolume:forCategory:)] &&
+        [controller
+            getVolume:&volume
+            forCategory:@"Audio/Video"]
+    ) {
+        saveSystemVolume(volume);
+    }
+}
+
+static void receivedSystemVolumeNotification(
+    NSNotification *notification
+) {
+    NSDictionary *info = notification.userInfo;
+    NSNumber *value = info[@"Volume"];
+
+    if (value == nil) {
+        value = info[
+            @"AVSystemController_AudioVolumeNotificationParameter"
+        ];
+    }
+
+    if (value != nil) {
+        saveSystemVolume(value.floatValue);
+    } else {
+        captureCurrentSystemVolume();
+    }
+}
 
 static NSString *const StatusPath =
     @"/var/mobile/MediaCtlLock-status.txt";
@@ -470,6 +536,24 @@ static void receivedLockNotification(
         writeStatus(
             @"MediaCtlLock loaded into SpringBoard"
         );
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:@"SystemVolumeDidChange"
+            object:nil
+            queue:nil
+            usingBlock:^(NSNotification *notification) {
+                receivedSystemVolumeNotification(notification);
+            }];
+
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:
+                @"AVSystemController_SystemVolumeDidChangeNotification"
+            object:nil
+            queue:nil
+            usingBlock:^(NSNotification *notification) {
+                receivedSystemVolumeNotification(notification);
+            }];
+
+        captureCurrentSystemVolume();
 
         CFNotificationCenterAddObserver(
             CFNotificationCenterGetDarwinNotifyCenter(),

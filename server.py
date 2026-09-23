@@ -1274,10 +1274,10 @@ playbackSeek.addEventListener(
 
 
 let volumeTimer = null;
-let volumeRequestInFlight = false;
-let volumeReadInFlight = false;
-let pendingVolume = null;
+let volumeWriteInFlight = false;
+let pendingVolumeWrite = null;
 let volumeDragActive = false;
+let volumePollAbortController = null;
 
 function clampVolume(value) {
   const numeric = Number(value);
@@ -1295,50 +1295,83 @@ function drawVolume(value) {
   );
 }
 
-function applyVolumeReport(result) {
-  if (!volumeDragActive) {
-    drawVolume(result.percent);
+function reportedIPadVolume(result) {
+  /*
+   * The normalized 0..1 system-volume value is the source of truth.
+   * percent is used only as a compatibility fallback.
+   */
+  const normalized = Number(result.volume);
+
+  if (Number.isFinite(normalized)) {
+    return clampVolume(normalized * 100);
   }
 
-  volumeSlider.disabled = false;
-  volumeLock.checked = Boolean(result.locked);
-  volumeSlider.setAttribute(
-    "aria-label",
-    "iPad volume"
-  );
+  return clampVolume(result.percent);
 }
 
 async function loadVolumeState() {
   if (
-    volumeReadInFlight
-    || volumeDragActive
-    || volumeRequestInFlight
-    || pendingVolume !== null
+    volumeDragActive
+    || volumeWriteInFlight
+    || pendingVolumeWrite !== null
   ) {
     return;
   }
 
-  volumeReadInFlight = true;
+  if (volumePollAbortController !== null) {
+    volumePollAbortController.abort();
+  }
+
+  const controller = new AbortController();
+  volumePollAbortController = controller;
 
   try {
-    const result = await readJSON("/api/volume");
-    applyVolumeReport(result);
+    const result = await readJSON(
+      "/api/volume?time=" + Date.now(),
+      {
+        signal: controller.signal
+      }
+    );
+
+    if (
+      controller.signal.aborted
+      || volumeDragActive
+      || volumeWriteInFlight
+      || pendingVolumeWrite !== null
+    ) {
+      return;
+    }
+
+    drawVolume(
+      reportedIPadVolume(result)
+    );
+    volumeSlider.disabled = false;
+    volumeLock.checked = Boolean(result.locked);
   } catch (error) {
-    setStatus(error.message);
+    if (error.name !== "AbortError") {
+      setStatus(error.message);
+    }
   } finally {
-    volumeReadInFlight = false;
+    if (volumePollAbortController === controller) {
+      volumePollAbortController = null;
+    }
   }
 }
 
 async function sendVolume(value) {
   const requested = clampVolume(value);
 
-  if (volumeRequestInFlight) {
-    pendingVolume = requested;
+  if (volumeWriteInFlight) {
+    pendingVolumeWrite = requested;
     return;
   }
 
-  volumeRequestInFlight = true;
+  if (volumePollAbortController !== null) {
+    volumePollAbortController.abort();
+    volumePollAbortController = null;
+  }
+
+  volumeWriteInFlight = true;
 
   try {
     await readJSON(
@@ -1356,16 +1389,17 @@ async function sendVolume(value) {
   } catch (error) {
     setStatus(error.message);
   } finally {
-    volumeRequestInFlight = false;
+    volumeWriteInFlight = false;
 
-    if (pendingVolume !== null) {
-      const next = pendingVolume;
-      pendingVolume = null;
+    if (pendingVolumeWrite !== null) {
+      const next = pendingVolumeWrite;
+      pendingVolumeWrite = null;
       sendVolume(next);
       return;
     }
 
-    setTimeout(loadVolumeState, 120);
+    /* The next draw comes only from a fresh iPad volume read. */
+    setTimeout(loadVolumeState, 180);
   }
 }
 
@@ -1374,7 +1408,7 @@ function queueVolume() {
     volumeSlider.value
   );
 
-  /* During interaction only, mirror the browser's selected position. */
+  /* Native slider feedback is allowed only while the user interacts. */
   drawVolume(requested);
 
   if (volumeTimer !== null) {
@@ -1391,6 +1425,11 @@ function queueVolume() {
 }
 
 function beginVolumeDrag() {
+  if (volumePollAbortController !== null) {
+    volumePollAbortController.abort();
+    volumePollAbortController = null;
+  }
+
   volumeDragActive = true;
 }
 
@@ -1455,7 +1494,6 @@ volumeLock.addEventListener(
         }
       );
 
-      /* Toggle state is independent from the volume display. */
       volumeLock.checked = Boolean(result.locked);
       setStatus(
         result.locked
@@ -2201,7 +2239,7 @@ setInterval(
 );
 setInterval(
   loadVolumeState,
-  350
+  500
 );
 </script>
 </body>
