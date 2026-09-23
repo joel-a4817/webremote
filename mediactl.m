@@ -135,6 +135,7 @@ static void printUsage(void) {
         "  mediactl song <persistent-id> \"Playlist Name\"\n"
         "  mediactl now-playing-json\n"
         "  mediactl lock-device\n"
+        "  mediactl home-screen\n"
         "  mediactl airplay-rt4817\n"
         "  mediactl airplay-devices-json\n"
         "  mediactl airplay-show-picker\n"
@@ -2304,6 +2305,25 @@ static int showNativeAirPlayPicker(void) {
 }
 
 
+static int showHomeScreen(void) {
+    CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR(
+            "com.joel.mediactl.home-screen"
+        ),
+        NULL,
+        NULL,
+        true
+    );
+
+    printf(
+        "SpringBoard Home Screen request sent\n"
+    );
+
+    return 0;
+}
+
+
 static int lockDeviceOnly(void) {
     CFNotificationCenterPostNotification(
         CFNotificationCenterGetDarwinNotifyCenter(),
@@ -2703,6 +2723,14 @@ int main(int argc, char *argv[]) {
                 isEqualToString:@"toggle"]
         ) {
             return togglePlaybackAtFullVolume();
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"home-screen"]
+        ) {
+            return showHomeScreen();
         }
 
         if (
