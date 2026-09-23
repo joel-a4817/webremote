@@ -3,6 +3,7 @@
 #import <dispatch/dispatch.h>
 #import <dlfcn.h>
 #import <math.h>
+#import <objc/message.h>
 /*
  * The Theos SDK does not ship xpc/xpc.h.
  * Declare only the libxpc interfaces used here.
@@ -2022,9 +2023,108 @@ static double lastKnownSystemVolume(void) {
         : NAN;
 }
 
+static double audioSessionOutputVolume(void) {
+    const char *frameworkPath =
+        "/System/Library/Frameworks/"
+        "AVFAudio.framework/AVFAudio";
+
+    void *framework =
+        dlopen(frameworkPath, RTLD_LAZY | RTLD_LOCAL);
+
+    if (framework == NULL) {
+        frameworkPath =
+            "/System/Library/Frameworks/"
+            "AVFoundation.framework/AVFoundation";
+
+        framework =
+            dlopen(frameworkPath, RTLD_LAZY | RTLD_LOCAL);
+    }
+
+    Class sessionClass =
+        NSClassFromString(@"AVAudioSession");
+
+    if (sessionClass == Nil) {
+        if (framework != NULL) {
+            dlclose(framework);
+        }
+        return NAN;
+    }
+
+    SEL sharedSelector =
+        NSSelectorFromString(@"sharedInstance");
+    SEL volumeSelector =
+        NSSelectorFromString(@"outputVolume");
+
+    if (
+        ![sessionClass respondsToSelector:sharedSelector]
+    ) {
+        if (framework != NULL) {
+            dlclose(framework);
+        }
+        return NAN;
+    }
+
+    id session =
+        ((id (*)(id, SEL))objc_msgSend)(
+            sessionClass,
+            sharedSelector
+        );
+
+    if (
+        session == nil ||
+        ![session respondsToSelector:volumeSelector]
+    ) {
+        if (framework != NULL) {
+            dlclose(framework);
+        }
+        return NAN;
+    }
+
+    float outputVolume =
+        ((float (*)(id, SEL))objc_msgSend)(
+            session,
+            volumeSelector
+        );
+
+    if (framework != NULL) {
+        dlclose(framework);
+    }
+
+    if (
+        !isfinite(outputVolume) ||
+        outputVolume < 0.0f ||
+        outputVolume > 1.0f
+    ) {
+        return NAN;
+    }
+
+    return outputVolume;
+}
+
+
 static double currentSystemVolume(void) {
+    /*
+     * AVAudioSession.outputVolume is the authoritative system-output
+     * volume exposed by iPadOS. It changes with the hardware buttons,
+     * Control Center, and successful writes from this tool.
+     */
+    double volume =
+        audioSessionOutputVolume();
+
+    if (isfinite(volume)) {
+        volume = fmax(0.0, fmin(1.0, volume));
+        saveKnownSystemVolume(volume);
+        return volume;
+    }
+
+    /*
+     * Keep AVSystemController only as a fallback. Some iPadOS versions
+     * return a stale 1.0 from getVolume:forCategory:, which is why it is
+     * no longer the primary reader.
+     */
     Class controllerClass =
         NSClassFromString(@"AVSystemController");
+
     if (
         controllerClass != Nil &&
         [controllerClass respondsToSelector:
@@ -2032,8 +2132,10 @@ static double currentSystemVolume(void) {
     ) {
         AVSystemController *controller =
             [controllerClass sharedAVSystemController];
+
         if (controller != nil) {
             float queriedVolume = 0.0f;
+
             if (
                 [controller respondsToSelector:
                     @selector(getVolume:forCategory:)] &&
@@ -2044,46 +2146,20 @@ static double currentSystemVolume(void) {
                 queriedVolume >= 0.0f &&
                 queriedVolume <= 1.0f
             ) {
-                saveKnownSystemVolume(queriedVolume);
-                return queriedVolume;
-            }
-
-            if ([controller respondsToSelector:
-                @selector(volumeForCategory:)]) {
-                double volume =
-                    [controller volumeForCategory:SystemVolumeCategory];
-                if (
-                    isfinite(volume) &&
-                    volume >= 0.0 &&
-                    volume <= 1.0
-                ) {
-                    double known = lastKnownSystemVolume();
-                    if (!(volume == 0.0 && isfinite(known) && known > 0.0)) {
-                        saveKnownSystemVolume(volume);
-                        return volume;
-                    }
-                }
+                volume = queriedVolume;
+                saveKnownSystemVolume(volume);
+                return volume;
             }
         }
     }
 
-    double known = lastKnownSystemVolume();
-    if (isfinite(known)) {
-        return known;
+    volume = lastKnownSystemVolume();
+
+    if (isfinite(volume)) {
+        return volume;
     }
 
-    MPMusicPlayerController *player =
-        [MPMusicPlayerController systemMusicPlayer];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    double fallback = player.volume;
-#pragma clang diagnostic pop
-    if (!isfinite(fallback)) {
-        fallback = 0.0;
-    }
-    fallback = fmax(0.0, fmin(1.0, fallback));
-    saveKnownSystemVolume(fallback);
-    return fallback;
+    return 0.0;
 }
 
 static BOOL applySystemVolume(

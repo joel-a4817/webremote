@@ -2358,15 +2358,23 @@ class Handler(BaseHTTPRequestHandler):
                 if not Path(uiopen_path).exists():
                     continue
 
-                open_music = subprocess.run(
-                    [
-                        uiopen_path,
-                        "music://show-now-playing",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
+                try:
+                    open_music = subprocess.run(
+                        [
+                            uiopen_path,
+                            "music://show-now-playing",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                except subprocess.TimeoutExpired as error:
+                    open_music = subprocess.CompletedProcess(
+                        error.cmd,
+                        124,
+                        error.stdout or "",
+                        "uiopen timed out",
+                    )
                 break
 
             if open_music is None:
