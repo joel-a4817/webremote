@@ -2172,7 +2172,9 @@ static int setPlaybackVolume(
         volumeLockedAtMaximum();
 
     double target =
-        requestedVolume;
+        locked
+            ? 1.0
+            : requestedVolume;
 
     if (!applySystemVolume(target)) {
         fprintf(
@@ -2220,13 +2222,25 @@ static int setVolumeLock(
     if (![preferences synchronize]) {
         fprintf(
             stderr,
-            "Could not save 100%%-on-Play setting\n"
+            "Could not save volume lock state\n"
         );
 
         return 1;
     }
 
-double volume =
+    if (
+        locked &&
+        !applySystemVolume(1.0)
+    ) {
+        fprintf(
+            stderr,
+            "Could not lock iPad volume at 100%%\n"
+        );
+
+        return 1;
+    }
+
+    double volume =
         currentSystemVolume();
 
     printJSONObject(@{
@@ -2540,7 +2554,7 @@ int main(int argc, char *argv[]) {
 
             fprintf(
                 stderr,
-                "100%%-on-Play setting must be on or off\n"
+                "Volume lock must be on or off\n"
             );
 
             return 2;

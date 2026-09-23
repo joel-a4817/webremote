@@ -657,7 +657,7 @@ button:active {
     );
 }
 
-#lock-device {
+#home-device {
   grid-column: 1 / -1;
 
   background:
@@ -740,14 +740,14 @@ button:active {
 
         <div class="volume-lock-row">
           <span class="volume-lock-label">
-            Lock volume at 100%
+            Set 100% when Play is pressed
           </span>
 
           <label class="volume-switch">
             <input
               id="volume-lock"
               type="checkbox"
-              aria-label="Lock volume at 100 percent"
+              aria-label="Set volume to 100 percent when Play is pressed"
             >
             <span class="volume-switch-track"></span>
           </label>
@@ -836,11 +836,11 @@ button:active {
         Disconnect AirPlay
       </button>
       <button
-        id="lock-device"
+        id="home-device"
         class="system-button"
         type="button"
       >
-        Lock iPad
+        Home Screen
       </button>
     </div>
 
@@ -989,9 +989,9 @@ const disconnectAirPlayButton =
   document.querySelector(
     "#disconnect-airplay"
   );
-const lockDeviceButton =
+const homeDeviceButton =
   document.querySelector(
-    "#lock-device"
+    "#home-device"
   );
 
 const ICONS = {
@@ -1279,33 +1279,28 @@ let pendingVolume = null;
 let volumeDragActive = false;
 let volumeHoldUntil = 0;
 
-function renderVolumeState(percent, locked) {
+function renderVolumeState(percent, boostOnPlay) {
   const numeric = Number(percent);
   const safe = Number.isFinite(numeric)
     ? Math.max(0, Math.min(100, numeric))
     : 0;
-  const shown = locked ? 100 : safe;
 
   if (
-    locked
-    || (
-      !volumeDragActive
-      && Date.now() >= volumeHoldUntil
-    )
+    !volumeDragActive
+    && Date.now() >= volumeHoldUntil
   ) {
-    volumeSlider.value = String(shown);
+    volumeSlider.value = String(safe);
   }
+
   volumeSlider.style.setProperty(
     "--volume-progress",
-    shown + "%"
+    safe + "%"
   );
-  volumeSlider.disabled = Boolean(locked);
-  volumeLock.checked = Boolean(locked);
+  volumeSlider.disabled = false;
+  volumeLock.checked = Boolean(boostOnPlay);
   volumeSlider.setAttribute(
     "aria-label",
-    locked
-      ? "Volume locked at 100 percent"
-      : "Music volume"
+    "iPad volume"
   );
 }
 
@@ -1322,11 +1317,6 @@ async function loadVolumeState() {
 }
 
 async function sendVolume(percent) {
-  if (volumeLock.checked) {
-    renderVolumeState(100, true);
-    setStatus("Volume locked at 100%");
-    return;
-  }
 
   if (volumeRequestInFlight) {
     pendingVolume = percent;
@@ -1349,7 +1339,7 @@ async function sendVolume(percent) {
     );
     volumeHoldUntil = Date.now() + 1500;
     renderVolumeState(
-      result.locked ? 100 : percent,
+      result.percent,
       result.locked
     );
   } catch (error) {
@@ -1430,8 +1420,8 @@ volumeLock.addEventListener(
       renderVolumeState(result.percent, result.locked);
       setStatus(
         result.locked
-          ? "Volume locked at 100%"
-          : "Volume lock off"
+          ? "100% on Play enabled"
+          : "100% on Play disabled"
       );
     } catch (error) {
       volumeLock.checked = !requested;
@@ -2153,14 +2143,14 @@ restartMusicButton.addEventListener(
   }
 );
 
-lockDeviceButton.addEventListener(
+homeDeviceButton.addEventListener(
   "click",
   () => {
     runSystemAction(
-      lockDeviceButton,
-      "/api/device/lock",
-      "Locking…",
-      "Lock request sent"
+      homeDeviceButton,
+      "/api/device/home",
+      "Opening…",
+      "Home screen opened"
     );
   }
 );
@@ -2834,10 +2824,30 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        if path == "/api/device/lock":
+        if path == "/api/device/home":
             result = execute(
-                ["lock-device"]
+                ["home-screen"]
             )
+
+            if result.returncode != 0:
+                for activator_path in (
+                    "/var/jb/usr/bin/activator",
+                    "/usr/bin/activator",
+                ):
+                    if not Path(activator_path).exists():
+                        continue
+
+                    result = subprocess.run(
+                        [
+                            activator_path,
+                            "send",
+                            "libactivator.system.homebutton",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    break
 
             succeeded = (
                 result.returncode == 0
@@ -2848,22 +2858,21 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": succeeded,
                     "message": (
-                        "Lock request sent"
+                        "Home screen opened"
                         if succeeded
                         else ""
                     ),
-                    "stdout":
-                        result.stdout.strip(),
+                    "stdout": result.stdout.strip(),
                     "error": (
                         ""
                         if succeeded
                         else (
                             result.stderr.strip()
                             or result.stdout.strip()
-                            or "Could not lock iPad"
+                            or "Could not open Home screen"
                         )
-                    )
-                }
+                    ),
+                },
             )
             return
 
