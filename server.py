@@ -1279,21 +1279,13 @@ let volumeReadInFlight = false;
 let pendingVolume = null;
 let volumeDragActive = false;
 let volumeReadSequence = 0;
-let volumeWriteTarget = null;
-let volumeWriteUntil = 0;
-
-
-function clampVolume(percent) {
-  const numeric = Number(percent);
-
-  return Number.isFinite(numeric)
-    ? Math.max(0, Math.min(100, numeric))
-    : 0;
-}
 
 
 function drawVolume(percent) {
-  const safe = clampVolume(percent);
+  const numeric = Number(percent);
+  const safe = Number.isFinite(numeric)
+    ? Math.max(0, Math.min(100, numeric))
+    : 0;
 
   volumeSlider.value = String(safe);
   volumeSlider.style.setProperty(
@@ -1311,37 +1303,6 @@ function renderVolumeState(percent, boostOnPlay) {
     "aria-label",
     "iPad volume"
   );
-}
-
-
-function acceptReportedVolume(percent) {
-  const reported = clampVolume(percent);
-
-  if (
-    volumeWriteTarget !== null
-    && Date.now() < volumeWriteUntil
-  ) {
-    const difference = Math.abs(
-      reported - volumeWriteTarget
-    );
-
-    if (difference <= 3) {
-      volumeWriteTarget = null;
-      volumeWriteUntil = 0;
-      return reported;
-    }
-
-    /*
-     * mediactl can briefly return its previous cached value after a
-     * successful system-volume write. Keep the requested value visible
-     * until the iPad reports the new value or the settle window ends.
-     */
-    return volumeWriteTarget;
-  }
-
-  volumeWriteTarget = null;
-  volumeWriteUntil = 0;
-  return reported;
 }
 
 
@@ -1374,8 +1335,9 @@ async function loadVolumeState(force = false) {
       return;
     }
 
+    /* Always display the system volume reported by the iPad. */
     renderVolumeState(
-      acceptReportedVolume(result.percent),
+      result.percent,
       result.locked
     );
   } catch (error) {
@@ -1387,7 +1349,10 @@ async function loadVolumeState(force = false) {
 
 
 async function sendVolume(percent) {
-  const requested = clampVolume(percent);
+  const requested = Math.max(
+    0,
+    Math.min(100, Number(percent))
+  );
 
   if (volumeRequestInFlight) {
     pendingVolume = requested;
@@ -1396,9 +1361,6 @@ async function sendVolume(percent) {
 
   volumeRequestInFlight = true;
   volumeReadSequence += 1;
-  volumeWriteTarget = requested;
-  volumeWriteUntil = Date.now() + 4000;
-  drawVolume(requested);
 
   try {
     const result = await readJSON(
@@ -1414,13 +1376,12 @@ async function sendVolume(percent) {
       }
     );
 
+    /* POST also returns the iPad's observed system volume. */
     renderVolumeState(
-      acceptReportedVolume(result.percent),
+      result.percent,
       result.locked
     );
   } catch (error) {
-    volumeWriteTarget = null;
-    volumeWriteUntil = 0;
     setStatus(error.message);
   } finally {
     volumeRequestInFlight = false;
@@ -1434,17 +1395,16 @@ async function sendVolume(percent) {
 
     setTimeout(
       () => loadVolumeState(true),
-      250
+      150
     );
   }
 }
 
 
 function queueVolume() {
-  const percent = clampVolume(
-    volumeSlider.value
-  );
+  const percent = Number(volumeSlider.value);
 
+  /* Local movement is shown only while the user is actively dragging. */
   drawVolume(percent);
 
   if (volumeTimer !== null) {
@@ -1467,48 +1427,39 @@ function beginVolumeDrag() {
 }
 
 
-function finishVolumeDrag() {
-  if (!volumeDragActive) {
-    return;
-  }
-
-  volumeDragActive = false;
-
-  if (volumeTimer !== null) {
-    clearTimeout(volumeTimer);
-    volumeTimer = null;
-  }
-
-  sendVolume(
-    volumeSlider.value
-  );
-}
-
-
 volumeSlider.addEventListener(
   "pointerdown",
   beginVolumeDrag
 );
+
+
 volumeSlider.addEventListener(
   "touchstart",
   beginVolumeDrag,
   { passive: true }
 );
+
+
 volumeSlider.addEventListener(
   "input",
   queueVolume
 );
+
+
 volumeSlider.addEventListener(
   "change",
-  finishVolumeDrag
-);
-volumeSlider.addEventListener(
-  "pointerup",
-  finishVolumeDrag
-);
-volumeSlider.addEventListener(
-  "touchend",
-  finishVolumeDrag
+  () => {
+    volumeDragActive = false;
+
+    if (volumeTimer !== null) {
+      clearTimeout(volumeTimer);
+      volumeTimer = null;
+    }
+
+    sendVolume(
+      Number(volumeSlider.value)
+    );
+  }
 );
 
 
@@ -1533,7 +1484,7 @@ volumeLock.addEventListener(
       );
 
       renderVolumeState(
-        acceptReportedVolume(result.percent),
+        result.percent,
         result.locked
       );
       setStatus(
@@ -1657,21 +1608,31 @@ async function updateNowPlaying() {
 }
 
 async function sendTransport(command) {
-  if (command === "toggle" || command === "play") {
-    volumeWriteTarget = null;
-    volumeWriteUntil = 0;
-  }
-
   try {
-    await readJSON(
+    const result = await readJSON(
       "/api/" + command,
       {
         method: "POST"
       }
     );
 
-    setStatus("Done");
+    const action =
+      command === "toggle"
+        ? result.action
+        : command;
 
+    /* Only an actual Play action may cause the 100% policy. */
+    if (action === "play") {
+      volumeWriteTarget = null;
+      volumeWriteUntil = 0;
+
+      setTimeout(
+        () => loadVolumeState(true),
+        180
+      );
+    }
+
+    setStatus("Done");
     setTimeout(
       updateNowPlaying,
       250
@@ -2321,22 +2282,16 @@ def execute_toggle():
     )
 
     if state.returncode != 0:
-        return state
+        return state, "unknown"
 
     try:
         now_playing = json.loads(
             state.stdout
         )
     except json.JSONDecodeError:
-        return run(
-            [
-                MEDIACTL,
-                "resume",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
+        return execute(
+            ["resume"]
+        ), "play"
 
     if now_playing.get(
         "playing",
@@ -2344,11 +2299,11 @@ def execute_toggle():
     ):
         return execute(
             ["pause"]
-        )
+        ), "pause"
 
     return execute(
         ["resume"]
-    )
+    ), "play"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2733,7 +2688,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/toggle":
-            result = execute_toggle()
+            result, action = execute_toggle()
 
             succeeded = (
                 result.returncode == 0
@@ -2743,6 +2698,7 @@ class Handler(BaseHTTPRequestHandler):
                 200 if succeeded else 500,
                 {
                     "ok": succeeded,
+                    "action": action,
                     "stdout":
                         result.stdout.strip(),
                     "error": (
