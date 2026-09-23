@@ -261,7 +261,7 @@ h1 {
 }
 
 #volume-slider {
-  --volume-progress: 100%;
+  --volume-progress: 0%;
   display: block;
   width: 100%;
   min-width: 0;
@@ -727,8 +727,8 @@ button:active {
             min="0"
             max="100"
             step="1"
-            value="100"
-            aria-label="Music volume"
+            value="0"
+            aria-label="iPad volume"
           >
 
           <span
@@ -1281,6 +1281,9 @@ let volumeDragActive = false;
 let volumeReadSequence = 0;
 let volumeTarget = null;
 let volumeTargetExpires = 0;
+let lastAcceptedVolume = null;
+let reportedVolumeCandidate = null;
+let reportedVolumeCandidateCount = 0;
 
 function clampVolume(value) {
   const numeric = Number(value);
@@ -1316,8 +1319,11 @@ function resolveReportedVolume(reportedPercent) {
     && Date.now() < volumeTargetExpires
   ) {
     if (Math.abs(reported - volumeTarget) <= 3) {
+      lastAcceptedVolume = reported;
       volumeTarget = null;
       volumeTargetExpires = 0;
+      reportedVolumeCandidate = null;
+      reportedVolumeCandidateCount = 0;
       return reported;
     }
 
@@ -1326,7 +1332,42 @@ function resolveReportedVolume(reportedPercent) {
 
   volumeTarget = null;
   volumeTargetExpires = 0;
-  return reported;
+
+  if (lastAcceptedVolume === null) {
+    lastAcceptedVolume = reported;
+    return reported;
+  }
+
+  if (Math.abs(reported - lastAcceptedVolume) <= 2) {
+    lastAcceptedVolume = reported;
+    reportedVolumeCandidate = null;
+    reportedVolumeCandidateCount = 0;
+    return reported;
+  }
+
+  if (
+    reportedVolumeCandidate !== null
+    && Math.abs(reported - reportedVolumeCandidate) <= 2
+  ) {
+    reportedVolumeCandidateCount += 1;
+  } else {
+    reportedVolumeCandidate = reported;
+    reportedVolumeCandidateCount = 1;
+  }
+
+  /*
+   * Require three consecutive iPad reports before accepting a large
+   * unsolicited jump. This rejects one-off stale 100% reads while still
+   * following genuine hardware-button or Control Center changes.
+   */
+  if (reportedVolumeCandidateCount >= 3) {
+    lastAcceptedVolume = reported;
+    reportedVolumeCandidate = null;
+    reportedVolumeCandidateCount = 0;
+    return reported;
+  }
+
+  return lastAcceptedVolume;
 }
 
 async function loadVolumeState(force = false) {
@@ -1381,6 +1422,9 @@ async function sendVolume(value) {
   volumeReadSequence += 1;
   volumeTarget = requested;
   volumeTargetExpires = Date.now() + 4000;
+  lastAcceptedVolume = requested;
+  reportedVolumeCandidate = null;
+  reportedVolumeCandidateCount = 0;
   drawVolume(requested);
 
   try {
@@ -1644,9 +1688,16 @@ async function sendTransport(command) {
         ? result.action
         : command;
 
-    if (action === "play") {
-      volumeTarget = null;
-      volumeTargetExpires = 0;
+    if (
+      action === "play"
+      && volumeLock.checked
+    ) {
+      volumeTarget = 100;
+      volumeTargetExpires = Date.now() + 4000;
+      lastAcceptedVolume = 100;
+      reportedVolumeCandidate = null;
+      reportedVolumeCandidateCount = 0;
+      drawVolume(100);
 
       setTimeout(
         () => loadVolumeState(true),
@@ -2428,15 +2479,23 @@ class Handler(BaseHTTPRequestHandler):
                 if not Path(uiopen_path).exists():
                     continue
 
-                open_music = subprocess.run(
-                    [
-                        uiopen_path,
-                        "music://show-now-playing",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
+                try:
+                    open_music = subprocess.run(
+                        [
+                            uiopen_path,
+                            "music://show-now-playing",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                except subprocess.TimeoutExpired as error:
+                    open_music = subprocess.CompletedProcess(
+                        error.cmd,
+                        124,
+                        error.stdout or "",
+                        "uiopen timed out",
+                    )
                 break
 
             if open_music is None:
