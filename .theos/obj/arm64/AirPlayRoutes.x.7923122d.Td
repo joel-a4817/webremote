@@ -1,5 +1,6 @@
-/home/joel/webremote/.theos/obj/arm64/MusicLibraryCommands.m.beb1cac4.o: \
-  MusicLibraryCommands.m /opt/theos/Prefix.pch \
+/home/joel/webremote/.theos/obj/arm64/AirPlayRoutes.x.7923122d.o: \
+  /home/joel/webremote/.theos/obj/arm64/AirPlayRoutes.x.m \
+  /opt/theos/Prefix.pch \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/kcdata.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/libunwind.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/uuid.modulemap \
@@ -19,7 +20,6 @@
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/net.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_c_xlocale.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_cdefs.modulemap \
-  /home/joel/webremote/MusicLibraryCommands.h \
   /opt/theos/vendor/include/LowPowerMode/module.modulemap \
   /opt/theos/vendor/include/FrontBoard/module.modulemap \
   /opt/theos/vendor/include/Celestial/module.modulemap \
@@ -80,7 +80,10 @@
   /opt/theos/vendor/include/MobileIcons/module.modulemap \
   /opt/theos/vendor/include/GeoServices/module.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/compact_unwind_encoding.modulemap \
-  /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap
+  /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap \
+  /opt/theos/vendor/include/substrate.h \
+  /opt/theos/vendor/lib/iphone/rootless/CydiaSubstrate.framework/Modules/module.modulemap \
+  /opt/theos/vendor/lib/iphone/rootless/CydiaSubstrate.framework/Headers/CydiaSubstrate.h
 
 /opt/theos/Prefix.pch:
 
@@ -121,8 +124,6 @@
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_c_xlocale.modulemap:
 
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_cdefs.modulemap:
-
-/home/joel/webremote/MusicLibraryCommands.h:
 
 /opt/theos/vendor/include/LowPowerMode/module.modulemap:
 
@@ -245,3 +246,9 @@
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/compact_unwind_encoding.modulemap:
 
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap:
+
+/opt/theos/vendor/include/substrate.h:
+
+/opt/theos/vendor/lib/iphone/rootless/CydiaSubstrate.framework/Modules/module.modulemap:
+
+/opt/theos/vendor/lib/iphone/rootless/CydiaSubstrate.framework/Headers/CydiaSubstrate.h:

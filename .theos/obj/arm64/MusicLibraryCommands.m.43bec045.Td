@@ -1,5 +1,5 @@
-/home/joel/webremote/.theos/obj/arm64/Tweak.x.e003509c.o: \
-  /home/joel/webremote/.theos/obj/arm64/Tweak.x.m /opt/theos/Prefix.pch \
+/home/joel/webremote/.theos/obj/arm64/MusicLibraryCommands.m.43bec045.o: \
+  MusicLibraryCommands.m /opt/theos/Prefix.pch \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/kcdata.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/libunwind.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/uuid.modulemap \
@@ -19,6 +19,7 @@
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/net.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_c_xlocale.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_cdefs.modulemap \
+  /home/joel/webremote/MusicLibraryCommands.h \
   /opt/theos/vendor/include/LowPowerMode/module.modulemap \
   /opt/theos/vendor/include/FrontBoard/module.modulemap \
   /opt/theos/vendor/include/Celestial/module.modulemap \
@@ -120,6 +121,8 @@
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_c_xlocale.modulemap:
 
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_cdefs.modulemap:
+
+/home/joel/webremote/MusicLibraryCommands.h:
 
 /opt/theos/vendor/include/LowPowerMode/module.modulemap:
 

@@ -326,62 +326,6 @@ h1 {
   opacity: .42;
 }
 
-.volume-lock-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 4px;
-}
-
-.volume-lock-label {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.volume-switch {
-  position: relative;
-  width: 52px;
-  height: 30px;
-  flex: 0 0 52px;
-  touch-action: manipulation;
-}
-
-.volume-switch input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-
-.volume-switch-track {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, .20);
-  transition: background .18s ease;
-}
-
-.volume-switch-track::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: white;
-  box-shadow: 0 2px 7px rgba(0, 0, 0, .34);
-  transition: transform .18s ease;
-}
-
-.volume-switch input:checked + .volume-switch-track {
-  background: #7b5cff;
-}
-
-.volume-switch input:checked + .volume-switch-track::after {
-  transform: translateX(22px);
-}
 
 .controls {
   display: grid;
@@ -451,6 +395,9 @@ button:active {
   background: #7b5cff;
 }
 
+.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin: 32px 3px 12px; }
+.section-heading .section-title { margin: 0; }
+.section-subtitle { margin-top: 4px; color: #85818f; font-size: 13px; font-weight: 550; line-height: 1.35; }
 .section-title {
   margin: 30px 3px 12px;
 
@@ -534,11 +481,39 @@ button:active {
   font-weight: 700;
 }
 
+.system-media-card {
+  position: relative;
+  overflow: hidden;
+  padding: 19px;
+  border: 1px solid rgba(255, 255, 255, .11);
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(57, 113, 204, .20), rgba(255, 255, 255, .07));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .17), 0 14px 34px rgba(0, 0, 0, .24);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.system-media-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.system-media-copy { min-width: 0; }
+.system-media-badge { flex: 0 0 auto; padding: 5px 9px; border: 1px solid rgba(143, 213, 255, .22); border-radius: 999px; color: #bce8ff; background: rgba(45, 132, 210, .17); font-size: 11px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.system-media-title { overflow: hidden; font-size: 19px; font-weight: 750; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.system-media-details { min-height: 18px; margin-top: 5px; overflow: hidden; color: #bbb8c5; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.system-media-controls { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 11px; align-items: center; margin-top: 17px; }
+.system-transport { display: grid; place-items: center; min-height: 68px; padding: 0; border-radius: 999px; background: rgba(255, 255, 255, .12); }
+.system-transport .media-icon { width: 31px; height: 31px; }
+#system-toggle { min-height: 82px; background: linear-gradient(145deg, #518fe9, #5262d8); }
+#system-toggle .media-icon { width: 39px; height: 39px; }
+.system-progress { margin-top: 13px; }
+#system-playback-seek { --seek-progress: 0%; display: block; width: 100%; height: 28px; margin: 0; padding: 0; border: 0; box-shadow: none; background: transparent; appearance: none; -webkit-appearance: none; touch-action: none; }
+#system-playback-seek::-webkit-slider-runnable-track { height: 5px; border-radius: 999px; background: linear-gradient(to right, #fff 0%, #fff var(--seek-progress), rgba(255,255,255,.22) var(--seek-progress), rgba(255,255,255,.22) 100%); }
+#system-playback-seek::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -6.5px; border: 0; border-radius: 50%; background: white; box-shadow: 0 2px 8px rgba(0,0,0,.38); appearance: none; -webkit-appearance: none; }
+#system-playback-seek:disabled { opacity: .42; }
+button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 255, .82); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
 .system-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 11px;
-  margin-top: 15px;
+  margin-top: 0;
 }
 
 .system-button {
@@ -805,7 +780,7 @@ button:active {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 11px;
-  margin-top: 24px;
+  margin-top: 0;
 }
 .library-launchers button,
 .upload-submit {
@@ -1031,9 +1006,10 @@ button:active {
 <body>
 <main>
   <section id="main-screen">
-    <h1>iPad Music</h1>
-    <div id="upload-complete-panel" class="upload-complete-panel hidden" aria-live="polite"></div>
+    <h1>iPad Music Remote</h1>
+    <div id="upload-complete-panel"></div>
 
+    <div class="section-heading"><div><div class="section-title">Apple Music</div><div class="section-subtitle">Library playback, queue modes and volume</div></div></div>
     <div class="now-playing">
       <div class="now-label">Now Playing</div>
       <div id="current-title">Loading…</div>
@@ -1098,20 +1074,6 @@ button:active {
             Shuffle Off
           </button>
         </div>
-        <div class="volume-lock-row">
-          <span class="volume-lock-label">
-            Set 100% when Play is pressed
-          </span>
-
-          <label class="volume-switch">
-            <input
-              id="volume-lock"
-              type="checkbox"
-              aria-label="Set volume to 100 percent when Play is pressed"
-            >
-            <span class="volume-switch-track"></span>
-          </label>
-        </div>
       </div>
     </div>
 
@@ -1165,6 +1127,36 @@ button:active {
       </button>
     </div>
 
+    <div class="section-heading"><div><div class="section-title">System Media</div><div class="section-subtitle">Control the active Control Centre media session</div></div></div>
+    <div class="system-media-card">
+      <div class="system-media-heading"><div class="system-media-copy"><div id="system-current-title" class="system-media-title">Loading…</div><div id="system-current-details" class="system-media-details"></div></div><span class="system-media-badge">System</span></div>
+      <div class="system-media-controls">
+        <button class="system-transport" type="button" data-system-command="previous" aria-label="Previous system track"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14"></path><path d="M18 6.5 8.5 12 18 17.5z"></path></svg></button>
+        <button class="system-transport" id="system-toggle" type="button" data-system-command="toggle" aria-label="Play system media"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="icon-fill" d="M8 5.5 19 12 8 18.5z"></path></svg></button>
+        <button class="system-transport" type="button" data-system-command="next" aria-label="Next system track"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"></path><path d="M6 6.5 15.5 12 6 17.5z"></path></svg></button>
+      </div>
+      <div class="system-progress"><input id="system-playback-seek" type="range" min="0" max="0" step="0.1" value="0" disabled aria-label="System playback position"><div class="playback-times"><span id="system-playback-elapsed">0:00</span><span id="system-playback-duration">0:00</span></div></div>
+    </div>
+    <div class="section-heading"><div><div class="section-title">Music Library</div><div class="section-subtitle">Browse songs or import new music</div></div></div>
+    <div class="library-launchers">
+      <button id="open-all-songs" type="button">All Songs</button>
+      <button id="open-upload" type="button">Upload Music</button>
+    </div>
+
+    <div class="section-heading"><div><div class="section-title">Playlists</div><div class="section-subtitle">Play, shuffle and manage your collections</div></div></div>
+    <button
+      id="create-playlist"
+      class="playlist-management-button"
+      type="button"
+    >
+      New Playlist
+    </button>
+
+    <div
+      id="playlist-list"
+      class="list"
+    ></div>
+    <div class="section-heading"><div><div class="section-title">AirPlay &amp; Device</div><div class="section-subtitle">Choose an output, restart Music or wake the iPad</div></div></div>
     <div class="system-controls">
 
       <button
@@ -1208,26 +1200,6 @@ button:active {
     </div>
 
 
-    <div class="library-launchers">
-      <button id="open-all-songs" type="button">All Songs</button>
-      <button id="open-upload" type="button">Upload Music</button>
-    </div>
-
-    <div class="section-title">Playlists</div>
-
-
-    <button
-      id="create-playlist"
-      class="playlist-management-button"
-      type="button"
-    >
-      New Playlist
-    </button>
-
-    <div
-      id="playlist-list"
-      class="list"
-    ></div>
   </section>
 
   <section
@@ -1448,10 +1420,6 @@ const volumeSlider =
   document.querySelector(
     "#volume-slider"
   );
-const volumeLock =
-  document.querySelector(
-    "#volume-lock"
-  );
 const repeatModeButton =
   document.querySelector(
     "#repeat-mode"
@@ -1463,6 +1431,12 @@ const shuffleQueueButton =
 
 const toggleButton =
   document.querySelector("#toggle");
+const systemCurrentTitle = document.querySelector("#system-current-title");
+const systemCurrentDetails = document.querySelector("#system-current-details");
+const systemToggleButton = document.querySelector("#system-toggle");
+const systemPlaybackSeek = document.querySelector("#system-playback-seek");
+const systemPlaybackElapsed = document.querySelector("#system-playback-elapsed");
+const systemPlaybackDuration = document.querySelector("#system-playback-duration");
 
 const connectAirPlayButton =
   document.querySelector(
@@ -1926,7 +1900,6 @@ async function loadVolumeState() {
       reportedIPadVolume(result)
     );
     volumeSlider.disabled = false;
-    volumeLock.checked = Boolean(result.locked);
   } catch (error) {
     if (error.name !== "AbortError") {
       setStatus(error.message);
@@ -2061,41 +2034,6 @@ volumeSlider.addEventListener(
 volumeSlider.addEventListener(
   "touchend",
   finishVolumeDrag
-);
-
-volumeLock.addEventListener(
-  "change",
-  async () => {
-    const requested = volumeLock.checked;
-    volumeLock.disabled = true;
-
-    try {
-      const result = await readJSON(
-        "/api/volume-lock",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            locked: requested
-          })
-        }
-      );
-
-      volumeLock.checked = Boolean(result.locked);
-      setStatus(
-        result.locked
-          ? "100% on Play enabled"
-          : "100% on Play disabled"
-      );
-    } catch (error) {
-      volumeLock.checked = !requested;
-      setStatus(error.message);
-    } finally {
-      volumeLock.disabled = false;
-    }
-  }
 );
 
 function renderShuffleMode(enabled) {
@@ -2361,24 +2299,75 @@ async function updateNowPlaying() {
   }
 }
 
-function refreshActualVolumeAfterPlayback() {
-  /*
-   * Never assume that the requested playback action changed volume.
-   * Re-read the volume published by the iPad and let loadVolumeState()
-   * update the slider only from that authoritative result.
-   */
-  for (const delay of [
-    0,
-    150,
-    350,
-    700,
-    1200
-  ]) {
-    setTimeout(
-      loadVolumeState,
-      delay
-    );
+let systemSeekActive = false;
+let systemSeekTimer = null;
+function drawSystemSeek(currentTime, duration) {
+  const total = Number.isFinite(Number(duration)) ? Math.max(0, Number(duration)) : 0;
+  const position = Number.isFinite(Number(currentTime)) ? Math.max(0, Math.min(Number(currentTime), total > 0 ? total : Number(currentTime))) : 0;
+  if (!systemSeekActive) {
+    systemPlaybackSeek.max = String(total);
+    systemPlaybackSeek.value = String(position);
   }
+  const shown = systemSeekActive ? Number(systemPlaybackSeek.value) : position;
+  systemPlaybackSeek.style.setProperty("--seek-progress", (total > 0 ? shown / total * 100 : 0) + "%");
+  systemPlaybackElapsed.textContent = formatPlaybackTime(shown);
+  systemPlaybackDuration.textContent = formatPlaybackTime(total);
+  systemPlaybackSeek.disabled = total <= 0;
+}
+function setSystemToggleState(isPlaying) {
+  systemToggleButton.innerHTML = isPlaying ? ICONS.pause : ICONS.play;
+  systemToggleButton.setAttribute("aria-label", isPlaying ? "Pause system media" : "Play system media");
+}
+async function updateSystemNowPlaying() {
+  try {
+    const data = await readJSON("/api/system/now-playing");
+    setSystemToggleState(Boolean(data.playing));
+    if (!data.available) {
+      systemCurrentTitle.textContent = "Nothing playing";
+      systemCurrentDetails.textContent = "";
+      drawSystemSeek(0, 0);
+      return;
+    }
+    systemCurrentTitle.textContent = data.title || "Unknown title";
+    systemCurrentDetails.textContent = [data.artist, data.album].filter(Boolean).join(" • ");
+    drawSystemSeek(data.currentTime, data.duration);
+  } catch {
+    setSystemToggleState(false);
+    systemCurrentTitle.textContent = "System Now Playing unavailable";
+    systemCurrentDetails.textContent = "";
+    drawSystemSeek(0, 0);
+  }
+}
+async function sendSystemCommand(command) {
+  try {
+    await readJSON("/api/system/" + command, {method: "POST"});
+    setStatus("System command sent");
+    setTimeout(updateSystemNowPlaying, 200);
+  } catch (error) { setStatus(error.message); }
+}
+async function sendSystemSeek() {
+  if (systemSeekTimer !== null) clearTimeout(systemSeekTimer);
+  systemSeekTimer = null;
+  try {
+    await readJSON("/api/system/seek", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({seconds: Number(systemPlaybackSeek.value)})
+    });
+  } catch (error) { setStatus(error.message); }
+  finally { systemSeekActive = false; setTimeout(updateSystemNowPlaying, 150); }
+}
+systemPlaybackSeek.addEventListener("pointerdown", () => { systemSeekActive = true; });
+systemPlaybackSeek.addEventListener("touchstart", () => { systemSeekActive = true; }, {passive: true});
+systemPlaybackSeek.addEventListener("input", () => {
+  systemSeekActive = true;
+  drawSystemSeek(systemPlaybackSeek.value, systemPlaybackSeek.max);
+  if (systemSeekTimer !== null) clearTimeout(systemSeekTimer);
+  systemSeekTimer = setTimeout(sendSystemSeek, 120);
+});
+systemPlaybackSeek.addEventListener("change", sendSystemSeek);
+for (const button of document.querySelectorAll("[data-system-command]")) {
+  button.addEventListener("click", () => sendSystemCommand(button.dataset.systemCommand));
 }
 
 async function sendTransport(command) {
@@ -2397,12 +2386,6 @@ async function sendTransport(command) {
       250
     );
 
-    if (
-      command === "play"
-      || command === "toggle"
-    ) {
-      refreshActualVolumeAfterPlayback();
-    }
 
   } catch (error) {
     setStatus(error.message);
@@ -3949,12 +3932,17 @@ document.querySelector(
 
 loadPlaylists();
 updateNowPlaying();
+updateSystemNowPlaying();
 loadVolumeState();
 loadRepeatMode();
 loadShuffleMode();
 
 setInterval(
   updateNowPlaying,
+  2000
+);
+setInterval(
+  updateSystemNowPlaying,
   2000
 );
 setInterval(
@@ -4578,6 +4566,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
 
+        if path == "/api/system/now-playing":
+            self.mediactl_json(["system-now-playing-json"])
+            return
         if path == "/api/volume":
             self.mediactl_json(
                 ["volume-json"]
@@ -4747,6 +4738,37 @@ class Handler(BaseHTTPRequestHandler):
 
 
 
+        if path in {
+            "/api/system/play",
+            "/api/system/pause",
+            "/api/system/toggle",
+            "/api/system/next",
+            "/api/system/previous",
+        }:
+            command = path.rsplit("/", 1)[-1]
+            result = execute(["system-" + command])
+            self.send_json(200 if result.returncode == 0 else 500, {
+                "ok": result.returncode == 0,
+                "stdout": result.stdout.strip(),
+                "error": "" if result.returncode == 0 else (result.stderr.strip() or result.stdout.strip() or "System transport command failed"),
+            })
+            return
+        if path == "/api/system/seek":
+            try:
+                payload = self.read_json_body()
+                seconds = float(payload["seconds"])
+                if not math.isfinite(seconds) or seconds < 0:
+                    raise ValueError
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                self.send_json(400, {"ok": False, "error": "Invalid system playback position"})
+                return
+            result = execute(["system-seek", str(seconds)])
+            self.send_json(200 if result.returncode == 0 else 500, {
+                "ok": result.returncode == 0,
+                "stdout": result.stdout.strip(),
+                "error": "" if result.returncode == 0 else (result.stderr.strip() or result.stdout.strip() or "System seek failed"),
+            })
+            return
         if path == "/api/playlist/create":
             try:
                 payload = self.read_json_body()
@@ -5321,10 +5343,6 @@ class Handler(BaseHTTPRequestHandler):
                     percent_value,
                     int,
                 )
-                or not isinstance(
-                    response.get("locked"),
-                    bool,
-                )
             ):
                 self.send_json(
                     500,
@@ -5332,105 +5350,6 @@ class Handler(BaseHTTPRequestHandler):
                         "ok": False,
                         "error":
                             "Invalid volume response schema",
-                    },
-                )
-                return
-
-            response["ok"] = True
-            self.send_json(200, response)
-            return
-
-        if path == "/api/volume-lock":
-            try:
-                payload = self.read_json_body()
-                locked = payload["locked"]
-                if not isinstance(locked, bool):
-                    raise TypeError
-            except (
-                KeyError,
-                TypeError,
-                ValueError,
-                json.JSONDecodeError,
-            ):
-                self.send_json(
-                    400,
-                    {
-                        "ok": False,
-                        "error": "Invalid volume lock",
-                    },
-                )
-                return
-
-            result = execute(
-                [
-                    "volume-lock",
-                    "on" if locked else "off",
-                ]
-            )
-            if result.returncode != 0:
-                self.send_json(
-                    500,
-                    {
-                        "ok": False,
-                        "error": (
-                            result.stderr.strip()
-                            or result.stdout.strip()
-                            or "Volume lock change failed"
-                        ),
-                    },
-                )
-                return
-
-            try:
-                response = json.loads(result.stdout)
-            except json.JSONDecodeError:
-                self.send_json(
-                    500,
-                    {
-                        "ok": False,
-                        "error": "Invalid volume lock response",
-                    },
-                )
-                return
-
-            volume_value = (
-                response.get("volume")
-                if isinstance(response, dict)
-                else None
-            )
-
-            percent_value = (
-                response.get("percent")
-                if isinstance(response, dict)
-                else None
-            )
-
-            if (
-                not isinstance(response, dict)
-                or isinstance(volume_value, bool)
-                or not isinstance(
-                    volume_value,
-                    (int, float),
-                )
-                or not math.isfinite(
-                    float(volume_value)
-                )
-                or isinstance(percent_value, bool)
-                or not isinstance(
-                    percent_value,
-                    int,
-                )
-                or not isinstance(
-                    response.get("locked"),
-                    bool,
-                )
-            ):
-                self.send_json(
-                    500,
-                    {
-                        "ok": False,
-                        "error":
-                            "Invalid volume-lock response schema",
                     },
                 )
                 return

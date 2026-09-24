@@ -1,5 +1,5 @@
-/home/joel/webremote/.theos/obj/arm64/MusicPlaylistRemoval.m.beb1cac4.o: \
-  MusicPlaylistRemoval.m /opt/theos/Prefix.pch \
+/home/joel/webremote/.theos/obj/arm64/mediactl.m.43bec045.o: mediactl.m \
+  /opt/theos/Prefix.pch \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/kcdata.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/libunwind.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/uuid.modulemap \
@@ -19,7 +19,6 @@
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/net.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_c_xlocale.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_cdefs.modulemap \
-  /home/joel/webremote/MusicPlaylistRemoval.h \
   /opt/theos/vendor/include/LowPowerMode/module.modulemap \
   /opt/theos/vendor/include/FrontBoard/module.modulemap \
   /opt/theos/vendor/include/Celestial/module.modulemap \
@@ -80,7 +79,11 @@
   /opt/theos/vendor/include/MobileIcons/module.modulemap \
   /opt/theos/vendor/include/GeoServices/module.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/compact_unwind_encoding.modulemap \
-  /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap
+  /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap \
+  /home/joel/webremote/MusicLibraryCommands.h \
+  /home/joel/webremote/MusicPlaylistRemoval.h \
+  /home/joel/webremote/ipad_speaker_request.h \
+  /home/joel/webremote/airplay_route_template.h
 
 /opt/theos/Prefix.pch:
 
@@ -121,8 +124,6 @@
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_c_xlocale.modulemap:
 
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/darwin_cdefs.modulemap:
-
-/home/joel/webremote/MusicPlaylistRemoval.h:
 
 /opt/theos/vendor/include/LowPowerMode/module.modulemap:
 
@@ -245,3 +246,11 @@
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/compact_unwind_encoding.modulemap:
 
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap:
+
+/home/joel/webremote/MusicLibraryCommands.h:
+
+/home/joel/webremote/MusicPlaylistRemoval.h:
+
+/home/joel/webremote/ipad_speaker_request.h:
+
+/home/joel/webremote/airplay_route_template.h:

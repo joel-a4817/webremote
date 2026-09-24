@@ -99,6 +99,11 @@ typedef uint8_t (*MRSendCommandWithReplyFunction)(
     dispatch_queue_t replyQueue,
     void (^reply)(CFArrayRef result)
 );
+typedef void (*MRGetNowPlayingInfoFunction)(
+    dispatch_queue_t queue,
+    void (^reply)(CFDictionaryRef information)
+);
+typedef void (*MRSetElapsedTimeFunction)(NSTimeInterval elapsedTime);
 
 static void printUsage(void) {
     fprintf(
@@ -126,8 +131,14 @@ static void printUsage(void) {
         "  mediactl repeat-cycle\n"
         "  mediactl volume-json\n"
         "  mediactl volume <0-1>\n"
-        "  mediactl volume-lock <on|off>\n"
         "  mediactl seek <seconds>\n"
+        "  mediactl system-play\n"
+        "  mediactl system-pause\n"
+        "  mediactl system-toggle\n"
+        "  mediactl system-next\n"
+        "  mediactl system-previous\n"
+        "  mediactl system-now-playing-json\n"
+        "  mediactl system-seek <seconds>\n"
         "  mediactl lock-device\n"
         "  mediactl wake-screen\n"
         "  mediactl home-screen\n"
@@ -383,33 +394,104 @@ static int sendMediaRemoteCommand(
     return 0;
 }
 
-static BOOL volumeLockedAtMaximum(void);
+static void printJSONObject(id object);
+static CFStringRef mediaRemoteConstant(void *framework, const char *name) {
+    CFStringRef *symbol = framework != NULL
+        ? (CFStringRef *)dlsym(framework, name)
+        : NULL;
+    return symbol != NULL ? *symbol : NULL;
+}
+static id mediaRemoteValue(NSDictionary *dictionary, void *framework, const char *name) {
+    CFStringRef key = mediaRemoteConstant(framework, name);
+    return key != NULL ? dictionary[(__bridge NSString *)key] : nil;
+}
+static int printSystemNowPlayingJSON(void) {
+    const char *path = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote";
+    void *framework = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+    if (framework == NULL) {
+        fprintf(stderr, "Could not load MediaRemote.framework: %s\n", dlerror());
+        return 1;
+    }
+    MRGetNowPlayingInfoFunction getInfo =
+        (MRGetNowPlayingInfoFunction)dlsym(framework, "MRMediaRemoteGetNowPlayingInfo");
+    if (getInfo == NULL) {
+        fprintf(stderr, "Could not resolve MRMediaRemoteGetNowPlayingInfo: %s\n", dlerror());
+        dlclose(framework);
+        return 1;
+    }
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    __block NSDictionary *information = nil;
+    getInfo(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^(CFDictionaryRef value) {
+        if (value != NULL) information = [(__bridge NSDictionary *)value copy];
+        dispatch_semaphore_signal(semaphore);
+    });
+    if (dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC)) != 0) {
+        fprintf(stderr, "Timed out reading system Now Playing information\n");
+        dlclose(framework);
+        return 1;
+    }
+    if (information.count == 0) {
+        printJSONObject(@{@"available": @NO, @"playing": @NO, @"title": @"", @"artist": @"", @"album": @"", @"currentTime": @0, @"duration": @0});
+        dlclose(framework);
+        return 0;
+    }
+    id title = mediaRemoteValue(information, framework, "kMRMediaRemoteNowPlayingInfoTitle");
+    id artist = mediaRemoteValue(information, framework, "kMRMediaRemoteNowPlayingInfoArtist");
+    id album = mediaRemoteValue(information, framework, "kMRMediaRemoteNowPlayingInfoAlbum");
+    id elapsedValue = mediaRemoteValue(information, framework, "kMRMediaRemoteNowPlayingInfoElapsedTime");
+    id durationValue = mediaRemoteValue(information, framework, "kMRMediaRemoteNowPlayingInfoDuration");
+    id rateValue = mediaRemoteValue(information, framework, "kMRMediaRemoteNowPlayingInfoPlaybackRate");
+    id timestampValue = mediaRemoteValue(information, framework, "kMRMediaRemoteNowPlayingInfoTimestamp");
+    double elapsed = [elapsedValue respondsToSelector:@selector(doubleValue)] ? [elapsedValue doubleValue] : 0.0;
+    double duration = [durationValue respondsToSelector:@selector(doubleValue)] ? [durationValue doubleValue] : 0.0;
+    double rate = [rateValue respondsToSelector:@selector(doubleValue)] ? [rateValue doubleValue] : 0.0;
+    if ([timestampValue isKindOfClass:[NSDate class]] && rate != 0.0) elapsed += -[(NSDate *)timestampValue timeIntervalSinceNow] * rate;
+    if (!isfinite(elapsed) || elapsed < 0.0) elapsed = 0.0;
+    if (!isfinite(duration) || duration < 0.0) duration = 0.0;
+    if (duration > 0.0 && elapsed > duration) elapsed = duration;
+    printJSONObject(@{
+        @"available": @YES,
+        @"playing": @(rate != 0.0),
+        @"title": [title isKindOfClass:[NSString class]] ? title : @"",
+        @"artist": [artist isKindOfClass:[NSString class]] ? artist : @"",
+        @"album": [album isKindOfClass:[NSString class]] ? album : @"",
+        @"currentTime": @(elapsed),
+        @"duration": @(duration)
+    });
+    dlclose(framework);
+    return 0;
+}
+static int seekSystemPlaybackTime(NSTimeInterval seconds) {
+    if (!isfinite(seconds) || seconds < 0.0) {
+        fprintf(stderr, "Invalid system playback time\n");
+        return 2;
+    }
+    const char *path = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote";
+    void *framework = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+    if (framework == NULL) {
+        fprintf(stderr, "Could not load MediaRemote.framework: %s\n", dlerror());
+        return 1;
+    }
+    MRSetElapsedTimeFunction setElapsed =
+        (MRSetElapsedTimeFunction)dlsym(framework, "MRMediaRemoteSetElapsedTime");
+    if (setElapsed == NULL) {
+        fprintf(stderr, "Could not resolve MRMediaRemoteSetElapsedTime: %s\n", dlerror());
+        dlclose(framework);
+        return 1;
+    }
+    setElapsed(seconds);
+    printJSONObject(@{@"currentTime": @(seconds)});
+    dlclose(framework);
+    return 0;
+}
 static double currentSystemVolume(void);
 static BOOL applySystemVolume(double volume);
-static int resumeWithVolumePolicy(void);
 static int requestShuffleEnabled(
     BOOL enabled,
     BOOL printResult
 );
 
 
-static int togglePlaybackAtFullVolume(void) {
-    MPMusicPlayerController *player =
-        [MPMusicPlayerController
-            systemMusicPlayer];
-
-    if (
-        player.playbackState ==
-        MPMusicPlaybackStatePlaying
-    ) {
-        return sendMediaRemoteCommand(
-            1,
-            "pause"
-        );
-    }
-
-    return resumeWithVolumePolicy();
-}
 
 
 static NSArray<MPMediaPlaylist *> *getPlaylists(void) {
@@ -2381,28 +2463,6 @@ volumePreferences(void) {
 }
 
 
-static BOOL volumeLockedAtMaximum(void) {
-    NSUserDefaults *preferences =
-        volumePreferences();
-
-    /*
-     * New installs and missing preferences start unlocked.
-     */
-    if (
-        [preferences
-            objectForKey:
-                @"lockAtMaximum"]
-        == nil
-    ) {
-        return NO;
-    }
-
-    return [
-        preferences
-        boolForKey:
-            @"lockAtMaximum"
-    ];
-}
 
 
 static void saveKnownSystemVolume(
@@ -2657,10 +2717,7 @@ static int printVolumeJSON(void) {
                 (NSInteger)llround(
                     volume * 100.0
                 )
-            ),
-
-        @"locked":
-            @(volumeLockedAtMaximum())
+            )
     });
 
     return 0;
@@ -2683,9 +2740,6 @@ static int setPlaybackVolume(
         return 2;
     }
 
-    BOOL locked =
-        volumeLockedAtMaximum();
-
     if (!applySystemVolume(requestedVolume)) {
         fprintf(
             stderr,
@@ -2707,90 +2761,15 @@ static int setPlaybackVolume(
                 (NSInteger)llround(
                     appliedVolume * 100.0
                 )
-            ),
-
-        @"locked":
-            @(locked)
+            )
     });
 
     return 0;
 }
 
 
-static int setVolumeLock(
-    BOOL locked
-) {
-    NSUserDefaults *preferences =
-        volumePreferences();
-
-    [preferences
-        setBool:
-            locked
-        forKey:
-            @"lockAtMaximum"];
-
-    if (![preferences synchronize]) {
-        fprintf(
-            stderr,
-            "Could not save 100%%-on-Play setting\n"
-        );
-
-        return 1;
-    }
-
-    double volume =
-        currentSystemVolume();
-
-    printJSONObject(@{
-        @"volume":
-            @(volume),
-
-        @"percent":
-            @(
-                (NSInteger)llround(
-                    volume * 100.0
-                )
-            ),
-
-        @"locked":
-            @(locked)
-    });
-
-    return 0;
-}
 
 
-static int resumeWithVolumePolicy(void) {
-    MPMusicPlayerController *player =
-        [MPMusicPlayerController
-            systemMusicPlayer];
-
-    BOOL locked =
-        volumeLockedAtMaximum();
-
-    if (
-        locked &&
-        !applySystemVolume(1.0)
-    ) {
-        fprintf(
-            stderr,
-            "Could not enforce 100%% system volume\n"
-        );
-
-        return 1;
-    }
-
-    [player play];
-
-    printf(
-        "%s\n",
-        locked
-            ? "Set system volume to 100% and resumed playback"
-            : "Resumed playback without changing volume"
-    );
-
-    return 0;
-}
 
 
 static int showNativeAirPlayPicker(void) {
@@ -2907,6 +2886,32 @@ int main(int argc, char *argv[]) {
             return 2;
         }
 
+        if ([argument isEqualToString:@"system-now-playing-json"]) {
+            return printSystemNowPlayingJSON();
+        }
+        if ([argument isEqualToString:@"system-seek"]) {
+            if (argc < 3) {
+                fprintf(stderr, "Usage: mediactl system-seek <seconds>\n");
+                return 2;
+            }
+            double seconds = 0.0;
+            if (!parseFiniteDouble(argv[2], &seconds)) {
+                fprintf(stderr, "Invalid system playback time\n");
+                return 2;
+            }
+            return seekSystemPlaybackTime(seconds);
+        }
+        NSDictionary<NSString *, NSNumber *> *systemCommands = @{
+            @"system-play": @0,
+            @"system-pause": @1,
+            @"system-toggle": @2,
+            @"system-next": @4,
+            @"system-previous": @5
+        };
+        NSNumber *systemCommand = systemCommands[argument];
+        if (systemCommand != nil) {
+            return sendMediaRemoteCommand(systemCommand.unsignedIntValue, argv[1]);
+        }
         if (
             [argument
                 isEqualToString:@"authorization"]
@@ -3004,20 +3009,6 @@ int main(int argc, char *argv[]) {
 
                 if (playResult != 0) {
                     return playResult;
-                }
-
-                if (
-                    volumeLockedAtMaximum() &&
-                    !applySystemVolume(1.0)
-                ) {
-                    fprintf(
-                        stderr,
-                        "Song started, but 100%% "
-                        "system volume could not "
-                        "be applied\n"
-                    );
-
-                    return 1;
                 }
 
                 return 0;
@@ -3323,60 +3314,6 @@ int main(int argc, char *argv[]) {
 
         if (
             [argument
-                isEqualToString:
-                    @"volume-lock"]
-        ) {
-            if (argc < 3) {
-                fprintf(
-                    stderr,
-                    "Usage: mediactl volume-lock "
-                    "<on|off>\n"
-                );
-
-                return 2;
-            }
-
-            NSString *value =
-                stringArgument(argv[2]);
-
-            if (value == nil) {
-                fprintf(
-                    stderr,
-                    "Value is not valid UTF-8\n"
-                );
-                return 2;
-            }
-
-            if (
-                [value
-                    isEqualToString:
-                        @"on"]
-            ) {
-                return setVolumeLock(
-                    YES
-                );
-            }
-
-            if (
-                [value
-                    isEqualToString:
-                        @"off"]
-            ) {
-                return setVolumeLock(
-                    NO
-                );
-            }
-
-            fprintf(
-                stderr,
-                "100%%-on-Play setting must be on or off\n"
-            );
-
-            return 2;
-        }
-
-        if (
-            [argument
                 isEqualToString:@"seek"]
         ) {
             if (argc < 3) {
@@ -3412,7 +3349,8 @@ int main(int argc, char *argv[]) {
             [argument
                 isEqualToString:@"resume"]
         ) {
-            return resumeWithVolumePolicy();
+            [[MPMusicPlayerController systemMusicPlayer] play];
+            return 0;
         }
 
         if (
@@ -3538,7 +3476,7 @@ int main(int argc, char *argv[]) {
             [argument
                 isEqualToString:@"toggle"]
         ) {
-            return togglePlaybackAtFullVolume();
+            return sendMediaRemoteCommand(2, "toggle");
         }
 
         if (
@@ -3569,7 +3507,7 @@ int main(int argc, char *argv[]) {
                 isEqualToString:
                     @"play"]
         ) {
-            return resumeWithVolumePolicy();
+            return sendMediaRemoteCommand(0, "play");
         }
 
         NSDictionary<NSString *, NSNumber *> *commands = @{

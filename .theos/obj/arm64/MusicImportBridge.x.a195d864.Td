@@ -1,5 +1,5 @@
-/home/joel/webremote/.theos/obj/arm64/AirPlayRoutes.x.7c079c91.o: \
-  /home/joel/webremote/.theos/obj/arm64/AirPlayRoutes.x.m \
+/home/joel/webremote/.theos/obj/arm64/MusicImportBridge.x.a195d864.o: \
+  /home/joel/webremote/.theos/obj/arm64/MusicImportBridge.x.m \
   /opt/theos/Prefix.pch \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/kcdata.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/libunwind.modulemap \
@@ -80,10 +80,7 @@
   /opt/theos/vendor/include/MobileIcons/module.modulemap \
   /opt/theos/vendor/include/GeoServices/module.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/compact_unwind_encoding.modulemap \
-  /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap \
-  /opt/theos/vendor/include/substrate.h \
-  /opt/theos/vendor/lib/iphone/rootless/CydiaSubstrate.framework/Modules/module.modulemap \
-  /opt/theos/vendor/lib/iphone/rootless/CydiaSubstrate.framework/Headers/CydiaSubstrate.h
+  /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap
 
 /opt/theos/Prefix.pch:
 
@@ -246,9 +243,3 @@
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/compact_unwind_encoding.modulemap:
 
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap:
-
-/opt/theos/vendor/include/substrate.h:
-
-/opt/theos/vendor/lib/iphone/rootless/CydiaSubstrate.framework/Modules/module.modulemap:
-
-/opt/theos/vendor/lib/iphone/rootless/CydiaSubstrate.framework/Headers/CydiaSubstrate.h:
