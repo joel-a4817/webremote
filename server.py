@@ -1,14 +1,31 @@
 #!/var/jb/usr/bin/python3
+import cgi
 import json
 import math
+import os
+import plistlib
+import shutil
 import subprocess
+import threading
 import time
+import unicodedata
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 MEDIACTL = "/var/jb/usr/local/bin/mediactl"
 PORT = 8765
+MUSIC_UPLOAD_DIRECTORY = Path('/var/mobile/Media/MusicUploads')
+MUSIC_IMPORT_REQUEST = Path('/var/mobile/MediaCtlMusicImport-request.plist')
+MUSIC_IMPORT_RESPONSE = Path('/var/mobile/MediaCtlMusicImport-response.plist')
+ALLOWED_AUDIO_EXTENSIONS = {'.m4a', '.mp3', '.aac', '.alac', '.wav'}
+MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
+PENDING_DUPLICATES = {}
+PENDING_DUPLICATE_TTL_SECONDS = 30 * 60
+PENDING_DUPLICATES_LOCK = threading.Lock()
+FILZA_IMPORT_LOCK = threading.Lock()
+
 
 TRANSPORT_COMMANDS = {
     "/api/play": ["play"],
@@ -780,27 +797,139 @@ button:active {
   line-height: 1.4;
 }
 
-.global-song-result {
-  min-height: 62px;
-  padding: 12px 15px;
-  border-radius: 17px;
-  text-align: left;
-  background: rgba(255, 255, 255, .10);
-}
 
-.global-song-title {
-  display: block;
-  font-size: 16px;
+.library-launchers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 11px;
+  margin-top: 24px;
+}
+.library-launchers button,
+.upload-submit {
+  min-height: 56px;
+  border-radius: 18px;
   font-weight: 750;
-  line-height: 1.3;
+}
+#open-all-songs { background: linear-gradient(135deg, #7b5cff, #3d73dc); }
+#open-upload { background: linear-gradient(135deg, #14a078, #277a8d); }
+.song-management-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  gap: 9px;
+}
+.playlist-song-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 9px;
+  align-items: stretch;
 }
 
-.global-song-details {
-  display: block;
-  margin-top: 4px;
-  color: #aaa7b2;
-  font-size: 12px;
+.playlist-song-membership {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 68px;
+  border-radius: 19px;
+  background: rgba(255,255,255,.10);
+}
+
+.playlist-song-membership input {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: #7b5cff;
+}
+.song-menu-button {
+  min-height: 68px;
+  border-radius: 19px;
+  font-size: 24px;
+}
+.upload-card, .membership-card {
+  padding: 18px;
+  border-radius: 21px;
+  background: rgba(255,255,255,.10);
+}
+.upload-card input[type=file] {
+  width: 100%;
+  margin-bottom: 14px;
+  color: white;
+}
+.upload-file-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.upload-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 7px 7px 7px 12px;
+  border-radius: 13px;
+  background: rgba(255,255,255,.08);
+}
+.upload-file-name {
+  overflow: hidden;
+  color: #e8e5ee;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: normal;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-file-remove {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  color: white;
+  background: rgba(255,255,255,.14);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+}
+.upload-file-remove:active {
+  background: rgba(216,62,99,.72);
+}
+.playlist-checks { display: grid; gap: 9px; margin: 12px 0; }
+.playlist-check {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  padding: 9px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.08);
+}
+.destructive {
+  margin-top: 16px;
+  min-height: 52px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #d83e63, #98233d);
+  font-weight: 750;
+}
+.upload-complete-panel {
+  margin: 0 0 18px;
+  padding: 15px 17px;
+  border: 1px solid rgba(112, 235, 177, .30);
+  border-radius: 18px;
+  color: #eafff3;
+  background: rgba(27, 132, 91, .24);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 700;
   line-height: 1.35;
+  letter-spacing: normal;
+  text-align: center;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 </style>
@@ -810,6 +939,7 @@ button:active {
 <main>
   <section id="main-screen">
     <h1>iPad Music</h1>
+    <div id="upload-complete-panel" class="upload-complete-panel hidden" aria-live="polite"></div>
 
     <div class="now-playing">
       <div class="now-label">Now Playing</div>
@@ -984,23 +1114,13 @@ button:active {
       </button>
     </div>
 
+
+    <div class="library-launchers">
+      <button id="open-all-songs" type="button">All Songs</button>
+      <button id="open-upload" type="button">Upload Music</button>
+    </div>
+
     <div class="section-title">Playlists</div>
-
-    <input
-      id="global-song-search"
-      class="search-box"
-      type="search"
-      inputmode="search"
-      autocomplete="off"
-      placeholder="Search songs in all playlists"
-      aria-label="Search songs in all playlists"
-    >
-
-    <div
-      id="global-song-results"
-      class="search-results"
-      aria-live="polite"
-    ></div>
 
     <div
       id="playlist-list"
@@ -1050,6 +1170,45 @@ button:active {
     ></div>
   </section>
 
+
+  <section id="all-songs-screen" class="hidden">
+    <div class="header-row">
+      <button id="all-songs-back" class="back" type="button">Back</button>
+      <h1>All Songs</h1><div></div>
+    </div>
+    <input id="global-song-search" class="search-box" type="search"
+      inputmode="search" autocomplete="off" placeholder="Search all songs"
+      aria-label="Search all songs">
+    <div id="global-song-results" class="search-results" aria-live="polite"></div>
+    <div id="all-song-list" class="list"></div>
+  </section>
+
+  <section id="upload-screen" class="hidden">
+    <div class="header-row">
+      <button id="upload-back" class="back" type="button">Back</button>
+      <h1>Upload Music</h1><div></div>
+    </div>
+    <div class="upload-card">
+      <input id="music-files" type="file" multiple
+        accept="audio/mp4,audio/m4a,audio/mpeg,audio/aac,audio/wav,.m4a,.mp3,.aac,.alac,.wav">
+      <div id="upload-file-list" class="upload-file-list" aria-live="polite"></div>
+      <div class="playlist-checks" id="upload-playlist-checks"></div>
+      <button id="upload-submit" class="upload-submit" type="button">Import Selected Files</button>
+    </div>
+  </section>
+
+  <section id="song-manage-screen" class="hidden">
+    <div class="header-row">
+      <button id="song-manage-back" class="back" type="button">Back</button>
+      <h1 id="song-manage-title">Song</h1><div></div>
+    </div>
+    <div class="membership-card">
+      <div id="song-manage-details" class="song-artist"></div>
+      <div id="song-playlist-checks" class="playlist-checks"></div>
+      <button id="remove-from-library" class="destructive" type="button">Remove from Library</button>
+    </div>
+  </section>
+
   <section
     id="airplay-screen"
     class="hidden"
@@ -1097,6 +1256,9 @@ const playlistTitle =
 
 const statusBox =
   document.querySelector("#status");
+
+const uploadCompletePanel =
+  document.querySelector("#upload-complete-panel");
 
 const currentTitle =
   document.querySelector("#current-title");
@@ -1186,9 +1348,6 @@ const playlistSearchMessage =
   document.querySelector("#playlist-search-message");
 
 let allPlaylists = [];
-let globalSearchTimer = null;
-let globalSearchGeneration = 0;
-let allPlaylistSongsPromise = null;
 
 function normalizeSearchText(value) {
   return String(value || "")
@@ -1196,196 +1355,6 @@ function normalizeSearchText(value) {
     .toLocaleLowerCase();
 }
 
-async function playSearchResult(
-  playlistName,
-  song
-) {
-  try {
-    await readJSON(
-      "/api/song",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          playlist: playlistName,
-          id: song.id
-        })
-      }
-    );
-    setStatus(
-      "Playing " + (song.title || "selected song")
-    );
-    setTimeout(updateNowPlaying, 350);
-  } catch (error) {
-    setStatus(error.message);
-  }
-}
-
-function createGlobalSongResult(
-  playlistName,
-  song
-) {
-  const button = document.createElement("button");
-  button.className = "global-song-result";
-  button.type = "button";
-
-  const title = document.createElement("span");
-  title.className = "global-song-title";
-  title.textContent = song.title || "Unknown title";
-
-  const details = document.createElement("span");
-  details.className = "global-song-details";
-  details.textContent = [
-    song.artist,
-    song.album,
-    playlistName
-  ].filter(Boolean).join(" • ");
-
-  button.append(title, details);
-  button.addEventListener(
-    "click",
-    () => playSearchResult(playlistName, song)
-  );
-  return button;
-}
-
-async function loadAllPlaylistSongs() {
-  if (allPlaylistSongsPromise !== null) {
-    return allPlaylistSongsPromise;
-  }
-
-  allPlaylistSongsPromise = (async () => {
-    const results = await Promise.allSettled(
-      allPlaylists.map(async playlist => {
-        const result = await readJSON(
-          "/api/playlist?name="
-          + encodeURIComponent(playlist.name)
-        );
-
-        return {
-          playlist: playlist.name,
-          songs: Array.isArray(result.songs)
-            ? result.songs
-            : []
-        };
-      })
-    );
-
-    const loaded = [];
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        loaded.push(result.value);
-      }
-    }
-
-    if (results.length > 0 && loaded.length === 0) {
-      throw new Error(
-        "Could not load songs from any playlist"
-      );
-    }
-
-    return loaded;
-  })();
-
-  try {
-    return await allPlaylistSongsPromise;
-  } catch (error) {
-    allPlaylistSongsPromise = null;
-    throw error;
-  }
-}
-
-async function runGlobalSongSearch(
-  requestedGeneration
-) {
-  const query = normalizeSearchText(
-    globalSongSearch.value.trim()
-  );
-
-  if (
-    requestedGeneration !== globalSearchGeneration
-  ) {
-    return;
-  }
-
-  globalSongResults.innerHTML = "";
-
-  if (!query) {
-    return;
-  }
-
-  const message = document.createElement("div");
-  message.className = "search-message";
-  message.textContent = "Searching all playlists…";
-  globalSongResults.appendChild(message);
-
-  try {
-    const collections =
-      await loadAllPlaylistSongs();
-
-    if (
-      requestedGeneration !== globalSearchGeneration
-    ) {
-      return;
-    }
-
-    const matches = [];
-    for (const collection of collections) {
-      for (const song of collection.songs) {
-        const haystack = normalizeSearchText([
-          song.title,
-          song.artist,
-          song.album,
-          collection.playlist
-        ].filter(Boolean).join(" "));
-
-        if (haystack.includes(query)) {
-          matches.push({
-            playlist: collection.playlist,
-            song: song
-          });
-        }
-      }
-    }
-
-    globalSongResults.innerHTML = "";
-
-    if (matches.length === 0) {
-      message.textContent = "No matching songs";
-      globalSongResults.appendChild(message);
-      return;
-    }
-
-    for (const match of matches.slice(0, 100)) {
-      globalSongResults.appendChild(
-        createGlobalSongResult(
-          match.playlist,
-          match.song
-        )
-      );
-    }
-
-    if (matches.length > 100) {
-      message.textContent =
-        "Showing the first 100 of "
-        + matches.length
-        + " matches";
-      globalSongResults.appendChild(message);
-    }
-  } catch (error) {
-    if (
-      requestedGeneration !== globalSearchGeneration
-    ) {
-      return;
-    }
-
-    globalSongResults.innerHTML = "";
-    message.textContent = error.message;
-    globalSongResults.appendChild(message);
-  }
-}
 
 function filterCurrentPlaylistSongs() {
   const query = normalizeSearchText(
@@ -1393,13 +1362,22 @@ function filterCurrentPlaylistSongs() {
   );
   let visible = 0;
 
-  for (const button of songList.querySelectorAll(
-    ".song-button"
+  for (const row of songList.querySelectorAll(
+    ".playlist-song-row"
   )) {
+    const button =
+      row.querySelector(".song-button");
+
     const show = !query
-      || normalizeSearchText(button.textContent)
-          .includes(query);
-    button.classList.toggle("hidden", !show);
+      || normalizeSearchText(
+          button?.textContent
+        ).includes(query);
+
+    row.classList.toggle(
+      "hidden",
+      !show
+    );
+
     if (show) {
       visible += 1;
     }
@@ -1415,29 +1393,6 @@ function filterCurrentPlaylistSongs() {
       : "";
 }
 
-globalSongSearch.addEventListener(
-  "input",
-  () => {
-    const generation = ++globalSearchGeneration;
-
-    if (globalSearchTimer !== null) {
-      clearTimeout(globalSearchTimer);
-    }
-
-    if (!globalSongSearch.value.trim()) {
-      globalSongResults.innerHTML = "";
-      return;
-    }
-
-    globalSearchTimer = setTimeout(
-      () => {
-        globalSearchTimer = null;
-        runGlobalSongSearch(generation);
-      },
-      220
-    );
-  }
-);
 
 playlistSongSearch.addEventListener(
   "input",
@@ -2239,6 +2194,26 @@ async function updateNowPlaying() {
   }
 }
 
+function refreshActualVolumeAfterPlayback() {
+  /*
+   * Never assume that the requested playback action changed volume.
+   * Re-read the volume published by the iPad and let loadVolumeState()
+   * update the slider only from that authoritative result.
+   */
+  for (const delay of [
+    0,
+    150,
+    350,
+    700,
+    1200
+  ]) {
+    setTimeout(
+      loadVolumeState,
+      delay
+    );
+  }
+}
+
 async function sendTransport(command) {
   try {
     await readJSON(
@@ -2249,10 +2224,19 @@ async function sendTransport(command) {
     );
 
     setStatus("Done");
+
     setTimeout(
       updateNowPlaying,
       250
     );
+
+    if (
+      command === "play"
+      || command === "toggle"
+    ) {
+      refreshActualVolumeAfterPlayback();
+    }
+
   } catch (error) {
     setStatus(error.message);
   }
@@ -2571,7 +2555,6 @@ async function shufflePlaylist(name) {
 async function loadPlaylists() {
   playlistList.innerHTML = "";
   allPlaylists = [];
-  allPlaylistSongsPromise = null;
 
   try {
     const data =
@@ -2722,11 +2705,93 @@ async function openPlaylist(name) {
     }
 
     for (const song of songs) {
+      const row =
+        document.createElement("div");
+
+      row.className =
+        "playlist-song-row";
+
+      const membership =
+        document.createElement("label");
+
+      membership.className =
+        "playlist-song-membership";
+
+      const checkbox =
+        document.createElement("input");
+
+      checkbox.type = "checkbox";
+      checkbox.checked = true;
+
+      checkbox.setAttribute(
+        "aria-label",
+        "Keep "
+        + (song.title || "song")
+        + " in "
+        + name
+      );
+
+      checkbox.addEventListener(
+        "change",
+        async () => {
+          if (checkbox.checked) {
+            return;
+          }
+
+          checkbox.disabled = true;
+
+          try {
+            await readJSON(
+              "/api/song/playlist",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type":
+                    "application/json"
+                },
+                body: JSON.stringify({
+                  id: song.id,
+                  playlist: name,
+                  included: false
+                })
+              }
+            );
+
+            row.remove();
+
+            if (
+              songList.querySelectorAll(
+                ".playlist-song-row"
+              ).length === 0
+            ) {
+              songList.textContent =
+                "This playlist has no available songs";
+            }
+
+            setStatus(
+              "Removed from " + name
+            );
+
+            await loadPlaylists();
+
+          } catch (error) {
+            checkbox.checked = true;
+            checkbox.disabled = false;
+            setStatus(error.message);
+          }
+        }
+      );
+
+      membership.appendChild(
+        checkbox
+      );
+
       const button =
         document.createElement("button");
 
       button.className =
         "song-button";
+
       button.type = "button";
 
       const title =
@@ -2744,13 +2809,10 @@ async function openPlaylist(name) {
       artist.className =
         "song-artist";
 
-      const details = [
+      artist.textContent = [
         song.artist,
         song.album
-      ].filter(Boolean);
-
-      artist.textContent =
-        details.join(" • ");
+      ].filter(Boolean).join(" • ");
 
       button.append(
         title,
@@ -2777,10 +2839,10 @@ async function openPlaylist(name) {
             );
 
             setStatus(
-              "Playing " +
-              (
-                song.title ||
-                "selected song"
+              "Playing "
+              + (
+                song.title
+                || "selected song"
               )
             );
 
@@ -2795,7 +2857,12 @@ async function openPlaylist(name) {
         }
       );
 
-      songList.appendChild(button);
+      row.append(
+        membership,
+        button
+      );
+
+      songList.appendChild(row);
     }
 
   } catch (error) {
@@ -2917,6 +2984,244 @@ homeDeviceButton.addEventListener(
   }
 );
 
+
+const allSongsScreen = document.querySelector('#all-songs-screen');
+const uploadScreen = document.querySelector('#upload-screen');
+const songManageScreen = document.querySelector('#song-manage-screen');
+const allSongList = document.querySelector('#all-song-list');
+const uploadPlaylistChecks = document.querySelector('#upload-playlist-checks');
+const songPlaylistChecks = document.querySelector('#song-playlist-checks');
+const musicFiles = document.querySelector('#music-files');
+const uploadFileList = document.querySelector('#upload-file-list');
+let selectedUploadFiles = [];
+let allSongs = [];
+let selectedManagedSong = null;
+
+function uploadFileKey(file) {
+  return [file.name, file.size, file.lastModified].join('::');
+}
+
+function renderSelectedUploadFiles() {
+  uploadFileList.innerHTML = '';
+
+  for (const file of selectedUploadFiles) {
+    const row = document.createElement('div');
+    row.className = 'upload-file-row';
+
+    const name = document.createElement('div');
+    name.className = 'upload-file-name';
+    name.textContent = file.name;
+    name.title = file.name;
+
+    const remove = document.createElement('button');
+    remove.className = 'upload-file-remove';
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', 'Remove ' + file.name + ' from upload');
+    remove.addEventListener('click', () => {
+      const key = uploadFileKey(file);
+      selectedUploadFiles = selectedUploadFiles.filter(
+        candidate => uploadFileKey(candidate) !== key
+      );
+      renderSelectedUploadFiles();
+    });
+
+    row.append(name, remove);
+    uploadFileList.appendChild(row);
+  }
+}
+
+musicFiles.addEventListener('change', () => {
+  const known = new Set(selectedUploadFiles.map(uploadFileKey));
+  for (const file of musicFiles.files) {
+    const key = uploadFileKey(file);
+    if (!known.has(key)) {
+      known.add(key);
+      selectedUploadFiles.push(file);
+    }
+  }
+  musicFiles.value = '';
+  renderSelectedUploadFiles();
+});
+
+function showOnly(screen) {
+  for (const section of [mainScreen, playlistScreen, airPlayScreen, allSongsScreen, uploadScreen, songManageScreen]) {
+    section.classList.toggle('hidden', section !== screen);
+  }
+}
+
+function createSongManagementRow(song) {
+  const row = document.createElement('div');
+  row.className = 'song-management-row';
+  const play = document.createElement('button');
+  play.className = 'song-button';
+  play.type = 'button';
+  play.innerHTML = '<span class="song-title"></span><span class="song-artist"></span>';
+  play.querySelector('.song-title').textContent = song.title || 'Unknown title';
+  play.querySelector('.song-artist').textContent = [song.artist, song.album].filter(Boolean).join(' • ');
+  play.addEventListener('click', async () => {
+    try {
+      await readJSON('/api/song/play', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:song.id})});
+      setStatus('Playing ' + (song.title || 'selected song'));
+      setTimeout(updateNowPlaying, 350);
+    } catch (error) { setStatus(error.message); }
+  });
+  const menu = document.createElement('button');
+  menu.className = 'song-menu-button';
+  menu.type = 'button';
+  menu.textContent = '⋯';
+  menu.setAttribute('aria-label', 'Manage ' + (song.title || 'song'));
+  menu.addEventListener('click', () => openSongManager(song));
+  row.append(play, menu);
+  return row;
+}
+
+function renderAllSongs() {
+  const query = normalizeSearchText(globalSongSearch.value.trim());
+  allSongList.innerHTML = '';
+  const matches = allSongs.filter(song => normalizeSearchText([song.title, song.artist, song.album].filter(Boolean).join(' ')).includes(query));
+  globalSongResults.textContent = matches.length ? '' : 'No matching songs';
+  for (const song of matches) allSongList.appendChild(createSongManagementRow(song));
+}
+
+async function loadAllSongs() {
+  const response = await readJSON('/api/songs');
+  allSongs = Array.isArray(response.songs) ? response.songs : [];
+  renderAllSongs();
+}
+
+globalSongSearch.addEventListener('input', renderAllSongs);
+
+document.querySelector('#open-all-songs').addEventListener('click', async () => {
+  showOnly(allSongsScreen);
+  try { await loadAllSongs(); } catch (error) { setStatus(error.message); }
+});
+document.querySelector('#all-songs-back').addEventListener('click', () => showOnly(mainScreen));
+
+document.querySelector('#open-upload').addEventListener('click', () => {
+  showOnly(uploadScreen);
+  uploadPlaylistChecks.innerHTML = '';
+  for (const playlist of allPlaylists) {
+    const label = document.createElement('label');
+    label.className = 'playlist-check';
+    label.innerHTML = '<input type="checkbox"><span></span>';
+    label.querySelector('input').value = playlist.name;
+    label.querySelector('span').textContent = playlist.name;
+    uploadPlaylistChecks.appendChild(label);
+  }
+});
+document.querySelector('#upload-back').addEventListener('click', () => showOnly(mainScreen));
+
+document.querySelector('#upload-submit').addEventListener('click', async () => {
+  if (!selectedUploadFiles.length) { setStatus('Choose at least one audio file'); return; }
+  const playlists = [...uploadPlaylistChecks.querySelectorAll('input:checked')].map(input => input.value);
+  const data = new FormData();
+  for (const file of selectedUploadFiles) data.append('files', file, file.name);
+  data.append('playlists', JSON.stringify(playlists));
+  try {
+    setStatus('Importing music…');
+    const result = await readJSON('/api/music/import', {method:'POST', body:data});
+
+    for (const duplicate of (result.duplicates || [])) {
+      const uploaded = duplicate.uploaded || {};
+      const existing = duplicate.existing || {};
+      const label = [uploaded.title, uploaded.artist].filter(Boolean).join(' by ');
+      const replace = confirm(
+        'Duplicate detected: ' + (label || 'same title and artist')
+        + '\n\nOK: replace the existing song'
+        + '\nCancel: remove this upload'
+      );
+      await readJSON('/api/music/duplicate-resolve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          token: duplicate.token,
+          action: replace ? 'replace' : 'remove-upload'
+        })
+      });
+    }
+
+    const count = result.imported.length + (result.duplicates || []).length;
+    const message = count === 1
+      ? 'Music upload complete: 1 song processed.'
+      : 'Music upload complete: ' + count + ' songs processed.';
+
+    selectedUploadFiles = [];
+    musicFiles.value = '';
+    renderSelectedUploadFiles();
+    await loadPlaylists();
+
+    uploadCompletePanel.textContent = message;
+    uploadCompletePanel.classList.remove('hidden');
+    showOnly(mainScreen);
+    window.scrollTo({top: 0, behavior: 'smooth'});
+    setStatus(message);
+
+    setTimeout(() => {
+      if (uploadCompletePanel.textContent === message) {
+        uploadCompletePanel.classList.add('hidden');
+        uploadCompletePanel.textContent = '';
+      }
+    }, 8000);
+  } catch (error) { setStatus(error.message); }
+});
+
+async function openSongManager(song) {
+  selectedManagedSong = song;
+  document.querySelector('#song-manage-title').textContent = song.title || 'Song';
+  document.querySelector('#song-manage-details').textContent = [song.artist, song.album].filter(Boolean).join(' • ');
+  songPlaylistChecks.innerHTML = 'Loading…';
+  showOnly(songManageScreen);
+  try {
+    const response = await readJSON('/api/song/playlists?id=' + encodeURIComponent(song.id));
+    songPlaylistChecks.innerHTML = '';
+    for (const playlist of response.playlists || []) {
+      const label = document.createElement('label');
+      label.className = 'playlist-check';
+      label.innerHTML = '<input type="checkbox"><span></span>';
+      const input = label.querySelector('input');
+      input.checked = Boolean(playlist.included);
+      label.querySelector('span').textContent = playlist.name;
+      input.addEventListener('change', async () => {
+        input.disabled = true;
+        try {
+          await readJSON('/api/song/playlist', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:song.id, playlist:playlist.name, included:input.checked})});
+        } catch (error) { input.checked = !input.checked; setStatus(error.message); }
+        finally { input.disabled = false; }
+      });
+      songPlaylistChecks.appendChild(label);
+    }
+  } catch (error) { songPlaylistChecks.textContent = error.message; }
+}
+
+document.querySelector('#song-manage-back').addEventListener('click', () => showOnly(allSongsScreen));
+document.querySelector('#remove-from-library').addEventListener('click', async () => {
+  if (!selectedManagedSong) return;
+  if (!confirm('Remove "' + (selectedManagedSong.title || 'this song') + '" from your Apple Music library?')) return;
+
+  const button = document.querySelector('#remove-from-library');
+  button.disabled = true;
+  button.textContent = 'Removing…';
+
+  try {
+    await readJSON('/api/song/library', {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id:selectedManagedSong.id})
+    });
+    setStatus('Removed from Apple Music');
+    selectedManagedSong = null;
+    showOnly(allSongsScreen);
+    await loadAllSongs();
+    await loadPlaylists();
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Remove from Library';
+  }
+});
+
 loadPlaylists();
 updateNowPlaying();
 loadVolumeState();
@@ -2986,6 +3291,218 @@ def execute(arguments, timeout=10):
             error,
             "mediactl timed out",
         )
+
+def restart_filza():
+    # Always start bridge work from a fresh Filza process.
+    process_stopped = False
+
+    for command in (
+        ("/var/jb/usr/bin/killall", "-9", "Filza"),
+        ("/usr/bin/killall", "-9", "Filza"),
+        ("/var/jb/usr/bin/pkill", "-9", "-x", "Filza"),
+        ("/usr/bin/pkill", "-9", "-x", "Filza"),
+    ):
+        if not Path(command[0]).exists():
+            continue
+
+        subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        process_stopped = True
+        break
+
+    if not process_stopped:
+        raise RuntimeError("Neither killall nor pkill was found")
+    time.sleep(0.75)
+
+    for executable in ("/var/jb/usr/bin/uiopen", "/usr/bin/uiopen"):
+        if not Path(executable).exists():
+            continue
+
+        result = subprocess.run(
+            [executable, "filza://"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                result.stderr.strip()
+                or result.stdout.strip()
+                or "Could not launch Filza"
+            )
+
+        # Allow Filza and the injected bridge observer to initialize.
+        time.sleep(2.0)
+        return
+
+    raise RuntimeError("uiopen was not found")
+
+
+def bridge_request(payload, timeout=20):
+    # Serialize Filza import requests.
+    with FILZA_IMPORT_LOCK:
+        request_id = str(uuid.uuid4())
+        request = dict(payload)
+        request["requestID"] = request_id
+
+        MUSIC_IMPORT_REQUEST.parent.mkdir(parents=True, exist_ok=True)
+        temporary = MUSIC_IMPORT_REQUEST.with_suffix(".tmp")
+        with temporary.open("wb") as handle:
+            plistlib.dump(request, handle, fmt=plistlib.FMT_BINARY)
+        os.replace(temporary, MUSIC_IMPORT_REQUEST)
+
+        try:
+            MUSIC_IMPORT_RESPONSE.unlink()
+        except FileNotFoundError:
+            pass
+
+        restart_filza()
+
+        trigger = execute(["music-import-trigger"], timeout=5)
+        if trigger.returncode != 0:
+            raise RuntimeError(
+                trigger.stderr.strip()
+                or trigger.stdout.strip()
+                or "Could not trigger the Filza music bridge"
+            )
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                with MUSIC_IMPORT_RESPONSE.open("rb") as handle:
+                    response = plistlib.load(handle)
+            except (FileNotFoundError, OSError, plistlib.InvalidFileException):
+                time.sleep(0.1)
+                continue
+
+            if response.get("requestID") != request_id:
+                time.sleep(0.1)
+                continue
+
+            if not response.get("ok"):
+                raise RuntimeError(
+                    response.get("error")
+                    or "Filza music operation failed"
+                )
+            return response
+
+        # Never leave the web request stuck if Filza exits during an operation.
+        raise TimeoutError(
+            "Filza did not complete the music operation; it may have exited"
+        )
+
+
+def valid_song_identifier(value):
+    return isinstance(value, str) and value.isdecimal() and int(value) != 0
+
+
+def prune_pending_duplicates():
+    cutoff = (
+        time.time()
+        - PENDING_DUPLICATE_TTL_SECONDS
+    )
+
+    with PENDING_DUPLICATES_LOCK:
+        expired = [
+            token
+            for token, pending
+            in PENDING_DUPLICATES.items()
+            if pending.get("created", 0) < cutoff
+        ]
+
+        for token in expired:
+            PENDING_DUPLICATES.pop(
+                token,
+                None,
+            )
+
+
+def normalized_metadata_text(value):
+    return " ".join(
+        unicodedata.normalize("NFKC", str(value or ""))
+        .casefold()
+        .split()
+    )
+
+
+def song_duplicate_key(song):
+    title = normalized_metadata_text(song.get("title"))
+    artist = normalized_metadata_text(song.get("artist"))
+    if not title or not artist:
+        return None
+    return title, artist
+
+
+def mediactl_object(arguments, timeout=15):
+    result = execute(arguments, timeout=timeout)
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr.strip()
+            or result.stdout.strip()
+            or "mediactl failed"
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("mediactl returned invalid JSON") from error
+    if not isinstance(payload, dict):
+        raise RuntimeError("mediactl returned invalid data")
+    return payload
+
+
+def library_songs():
+    payload = mediactl_object(["songs-json"])
+    songs = payload.get("songs", [])
+    return songs if isinstance(songs, list) else []
+
+
+def add_song_to_playlists(identifier, playlists):
+    for playlist in playlists:
+        result = execute([
+            "song-add-to-playlist",
+            identifier,
+            playlist,
+        ])
+        if result.returncode != 0:
+            raise RuntimeError(
+                result.stderr.strip()
+                or result.stdout.strip()
+                or "Could not add song to " + playlist
+            )
+
+
+def remove_song_from_library(identifier):
+    if not valid_song_identifier(str(identifier)):
+        raise ValueError("Invalid song ID")
+
+    result = execute(
+        ["song-remove-from-library", str(identifier)],
+        timeout=15,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr.strip()
+            or result.stdout.strip()
+            or "Apple Music library removal failed"
+        )
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            "mediactl returned invalid removal data"
+        ) from error
+
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            "mediactl returned invalid removal data"
+        )
+
+    return payload
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -3100,9 +3617,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_data(
                 200,
                 "text/html; charset=utf-8",
-                PAGE.encode()
+                PAGE.encode("utf-8")
             )
             return
+
 
         if path == "/api/volume":
             self.mediactl_json(
@@ -3216,6 +3734,19 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+
+        if path == "/api/songs":
+            self.mediactl_json(["songs-json"])
+            return
+
+        if path == "/api/song/playlists":
+            identifier = query.get("id", [""])[0]
+            if not valid_song_identifier(identifier):
+                self.send_json(400, {"ok": False, "error": "Invalid song ID"})
+                return
+            self.mediactl_json(["song-playlists-json", identifier])
+            return
+
         if path == "/api/playlists":
             self.mediactl_json(
                 ["playlists-json"]
@@ -3257,6 +3788,177 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+
+        if path == "/api/song/play":
+            try:
+                payload = self.read_json_body()
+                identifier = payload["id"]
+                if not valid_song_identifier(identifier):
+                    raise ValueError
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                self.send_json(400, {"ok": False, "error": "Invalid song ID"})
+                return
+            self.mediactl_json(["song-play", identifier])
+            return
+
+        if path == "/api/song/playlist":
+            try:
+                payload = self.read_json_body()
+                identifier = payload["id"]
+                playlist = payload["playlist"].strip()
+                included = payload["included"]
+                if not valid_song_identifier(identifier) or not playlist or not isinstance(included, bool):
+                    raise ValueError
+            except (KeyError, AttributeError, TypeError, ValueError, json.JSONDecodeError):
+                self.send_json(400, {"ok": False, "error": "Invalid playlist membership request"})
+                return
+            command = "song-add-to-playlist" if included else "song-remove-from-playlist"
+            self.mediactl_json([command, identifier, playlist])
+            return
+
+        if path == "/api/music/import":
+            staged_paths = []
+            try:
+                prune_pending_duplicates()
+                content_length = int(self.headers.get("Content-Length", "0"))
+                if content_length <= 0 or content_length > MAX_UPLOAD_BYTES:
+                    raise ValueError("Invalid upload size")
+
+                form = cgi.FieldStorage(
+                    fp=self.rfile,
+                    headers=self.headers,
+                    environ={
+                        "REQUEST_METHOD": "POST",
+                        "CONTENT_TYPE": self.headers.get("Content-Type", ""),
+                    },
+                    keep_blank_values=True,
+                )
+                playlists = json.loads(form.getfirst("playlists", "[]"))
+                if not isinstance(playlists, list) or not all(
+                    isinstance(value, str) and value.strip()
+                    for value in playlists
+                ):
+                    raise ValueError("Invalid playlist selection")
+                playlists = [value.strip() for value in playlists]
+
+                fields = form["files"] if "files" in form else []
+                if not isinstance(fields, list):
+                    fields = [fields]
+                if not fields:
+                    raise ValueError("No files uploaded")
+
+                existing_songs = library_songs()
+                existing_by_key = {}
+                for song in existing_songs:
+                    key = song_duplicate_key(song)
+                    if key is not None:
+                        existing_by_key.setdefault(key, []).append(song)
+
+                MUSIC_UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
+                imported = []
+                duplicates = []
+
+                for field in fields:
+                    original = Path(field.filename or "upload.m4a").name
+                    extension = Path(original).suffix.lower()
+                    if extension not in ALLOWED_AUDIO_EXTENSIONS:
+                        raise ValueError("Unsupported audio file: " + original)
+
+                    staging = MUSIC_UPLOAD_DIRECTORY / (str(uuid.uuid4()) + extension)
+                    staged_paths.append(staging)
+                    with staging.open("wb") as output:
+                        shutil.copyfileobj(field.file, output)
+
+                    response = bridge_request({
+                        "action": "import",
+                        "sourcePath": str(staging),
+                        "title": Path(original).stem,
+                    })
+                    if not staging.exists():
+                        staged_paths.remove(staging)
+
+                    identifier = str(response.get("persistentID", ""))
+                    refreshed = library_songs()
+                    imported_song = next(
+                        (song for song in refreshed if str(song.get("id", "")) == identifier),
+                        None,
+                    )
+                    if imported_song is None:
+                        raise RuntimeError("Imported song was not returned by the Music library")
+
+                    key = song_duplicate_key(imported_song)
+                    matches = existing_by_key.get(key, []) if key is not None else []
+                    if matches:
+                        token = str(uuid.uuid4())
+                        existing = matches[0]
+                        with PENDING_DUPLICATES_LOCK:
+                            PENDING_DUPLICATES[token] = {
+                                "new": imported_song,
+                                "existing": existing,
+                                "playlists": playlists,
+                                "created": time.time(),
+                            }
+                        duplicates.append({
+                            "token": token,
+                            "uploaded": imported_song,
+                            "existing": existing,
+                        })
+                    else:
+                        add_song_to_playlists(identifier, playlists)
+                        imported.append(response)
+                        if key is not None:
+                            existing_by_key.setdefault(key, []).append(imported_song)
+
+                self.send_json(200, {
+                    "ok": True,
+                    "imported": imported,
+                    "duplicates": duplicates,
+                })
+            except Exception as error:
+                for staging in staged_paths:
+                    try:
+                        staging.unlink()
+                    except FileNotFoundError:
+                        pass
+                self.send_json(400, {"ok": False, "error": str(error)})
+            return
+
+        if path == "/api/music/duplicate-resolve":
+            try:
+                prune_pending_duplicates()
+                payload = self.read_json_body()
+                token = payload["token"]
+                action = payload["action"]
+                if not isinstance(token, str) or action not in {"replace", "remove-upload"}:
+                    raise ValueError
+                with PENDING_DUPLICATES_LOCK:
+                    pending = PENDING_DUPLICATES.pop(token)
+
+                new_identifier = str(pending["new"]["id"])
+                existing_identifier = str(pending["existing"]["id"])
+
+                if action == "replace":
+                    remove_song_from_library(existing_identifier)
+                    add_song_to_playlists(
+                        new_identifier,
+                        pending["playlists"],
+                    )
+                    message = "Existing song replaced"
+                else:
+                    remove_song_from_library(new_identifier)
+                    message = "Uploaded duplicate removed"
+
+                self.send_json(200, {
+                    "ok": True,
+                    "action": action,
+                    "message": message,
+                })
+            except KeyError:
+                self.send_json(400, {"ok": False, "error": "Duplicate decision expired"})
+            except Exception as error:
+                self.send_json(400, {"ok": False, "error": str(error)})
+            return
 
         if path == "/api/volume":
             try:
@@ -3987,6 +4689,25 @@ class Handler(BaseHTTPRequestHandler):
                 "error": "Unknown command"
             }
         )
+
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+        if path != "/api/song/library":
+            self.send_json(404, {"ok": False, "error": "Not found"})
+            return
+
+        try:
+            payload = self.read_json_body()
+            identifier = payload["id"]
+            if not valid_song_identifier(identifier):
+                raise ValueError("Invalid song ID")
+
+            response = remove_song_from_library(identifier)
+            response["ok"] = True
+            self.send_json(200, response)
+        except Exception as error:
+            self.send_json(400, {"ok": False, "error": str(error)})
 
     def log_message(self, format, *args):
         pass

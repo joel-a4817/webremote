@@ -1,4 +1,5 @@
-/home/joel/webremote/.theos/obj/arm64/mediactl.m.43bec045.o: mediactl.m \
+/home/joel/webremote/.theos/obj/arm64/MusicImportBridge.x.a195d864.o: \
+  /home/joel/webremote/.theos/obj/arm64/MusicImportBridge.x.m \
   /opt/theos/Prefix.pch \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/kcdata.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/libunwind.modulemap \
@@ -79,11 +80,7 @@
   /opt/theos/vendor/include/UserNotificationsUIKit/module.modulemap \
   /opt/theos/vendor/include/MobileIcons/module.modulemap \
   /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/compact_unwind_encoding.modulemap \
-  /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap \
-  /home/joel/webremote/MusicLibraryCommands.h \
-  /home/joel/webremote/MusicPlaylistRemoval.h \
-  /home/joel/webremote/ipad_speaker_request.h \
-  /home/joel/webremote/rt4817_request.h
+  /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap
 
 /opt/theos/Prefix.pch:
 
@@ -246,11 +243,3 @@
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/compact_unwind_encoding.modulemap:
 
 /opt/theos/sdks/iPhoneOS16.5.sdk/usr/include/mach-o/dyld.modulemap:
-
-/home/joel/webremote/MusicLibraryCommands.h:
-
-/home/joel/webremote/MusicPlaylistRemoval.h:
-
-/home/joel/webremote/ipad_speaker_request.h:
-
-/home/joel/webremote/rt4817_request.h:

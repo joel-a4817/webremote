@@ -8,6 +8,16 @@
 #import <stdint.h>
 #import <stdio.h>
 #import <stdlib.h>
+#import <spawn.h>
+#import <string.h>
+#import <sys/wait.h>
+#import <unistd.h>
+
+#import "MusicLibraryCommands.h"
+#import "MusicPlaylistRemoval.h"
+#import "ipad_speaker_request.h"
+#import "rt4817_request.h"
+
 /*
  * The Theos SDK does not ship xpc/xpc.h.
  * Declare only the libxpc interfaces used here.
@@ -72,14 +82,6 @@ xpc_connection_send_message(
     xpc_object_t message
 );
 
-#import <spawn.h>
-#import <string.h>
-#import <sys/wait.h>
-#import <unistd.h>
-
-#import "rt4817_request.h"
-#import "ipad_speaker_request.h"
-
 @interface AVSystemController : NSObject
 + (instancetype)sharedAVSystemController;
 - (BOOL)getVolume:(float *)volume
@@ -135,6 +137,14 @@ static void printUsage(void) {
         "  mediactl airplay-set-default <uid> [name]\n"
         "  mediactl restart-music\n"
         "  mediactl resume\n"
+        "  mediactl songs-json\n"
+        "  mediactl song-play <persistent-id>\n"
+        "  mediactl song-playlists-json <persistent-id>\n"
+        "  mediactl song-add-to-playlist <persistent-id> \"Playlist Name\"\n"
+        "  mediactl song-remove-from-playlist "
+        "<persistent-id> \"Playlist Name\"\n"
+        "  mediactl song-remove-from-library <persistent-id>\n"
+        "  mediactl music-import-trigger\n"
     );
 }
 
@@ -337,7 +347,7 @@ static int sendMediaRemoteCommand(
         command,
         NULL,
         replyQueue,
-        ^(CFArrayRef result) {
+        ^(__unused CFArrayRef result) {
             receivedReply = YES;
             dispatch_semaphore_signal(semaphore);
         }
@@ -1164,6 +1174,84 @@ static int playPlaylist(
     return 0;
 }
 
+static BOOL parsePersistentID(
+    const char *value,
+    unsigned long long *result
+) {
+    if (value == NULL || result == NULL) {
+        return NO;
+    }
+
+    char *endPointer = NULL;
+    errno = 0;
+
+    unsigned long long identifier =
+        strtoull(
+            value,
+            &endPointer,
+            10
+        );
+
+    if (
+        errno == ERANGE ||
+        endPointer == value ||
+        *endPointer != '\0' ||
+        identifier == 0
+    ) {
+        return NO;
+    }
+
+    *result = identifier;
+    return YES;
+}
+
+
+static BOOL parseFiniteDouble(
+    const char *value,
+    double *result
+) {
+    if (value == NULL || result == NULL) {
+        return NO;
+    }
+
+    char *endPointer = NULL;
+    errno = 0;
+
+    double parsed =
+        strtod(
+            value,
+            &endPointer
+        );
+
+    if (
+        errno == ERANGE ||
+        endPointer == value ||
+        *endPointer != '\0' ||
+        !isfinite(parsed)
+    ) {
+        return NO;
+    }
+
+    *result = parsed;
+    return YES;
+}
+
+
+static NSString *stringArgument(
+    const char *value
+) {
+    if (value == NULL) {
+        return nil;
+    }
+
+    return [
+        NSString
+        stringWithUTF8String:
+            value
+    ];
+}
+
+
 static NSString *joinArguments(
     int argc,
     char *argv[],
@@ -1636,7 +1724,7 @@ dataByReplacingUIDField(
 }
 
 
-static BOOL replaceUIDDataRecursively(
+static void replaceUIDDataRecursively(
     id object,
     NSData *oldUID,
     NSData *newUID,
@@ -1646,7 +1734,7 @@ static BOOL replaceUIDDataRecursively(
         object == nil ||
         replacementCount == NULL
     ) {
-        return NO;
+        return;
     }
 
     if (
@@ -1694,7 +1782,7 @@ static BOOL replaceUIDDataRecursively(
             );
         }
 
-        return YES;
+        return;
     }
 
     if (
@@ -1743,12 +1831,9 @@ static BOOL replaceUIDDataRecursively(
             );
         }
 
-        return YES;
+        return;
     }
-
-    return NO;
 }
-
 
 static NSData *routePayloadForUID(
     NSString *uid,
@@ -1943,7 +2028,7 @@ static int sendAirPlayPayload(
 
     xpc_connection_set_event_handler(
         connection,
-        ^(xpc_object_t event) {
+        ^(__unused xpc_object_t event) {
         }
     );
     xpc_connection_resume(connection);
@@ -2106,10 +2191,21 @@ static int restartMusicInstance(void) {
         );
 
     if (killResult != 0) {
-        runExecutable(
-            "/var/jb/usr/bin/killall",
-            killArguments
+        killResult =
+            runExecutable(
+                "/var/jb/usr/bin/killall",
+                killArguments
+            );
+    }
+
+    if (killResult != 0) {
+        fprintf(
+            stderr,
+            "Could not stop Music or "
+            "MusicUIService.\n"
         );
+
+        return 1;
     }
 
     usleep(700000);
@@ -2727,6 +2823,23 @@ static int lockDeviceOnly(void) {
     return 0;
 }
 
+static int triggerMusicImportBridge(void) {
+    CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR(
+            "com.joel.mediactl.music-import-request"
+        ),
+        NULL,
+        NULL,
+        true
+    );
+
+    printJSONObject(@{
+        @"triggered": @YES
+    });
+
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {
@@ -2772,6 +2885,14 @@ int main(int argc, char *argv[]) {
 
         if (
             [argument
+                isEqualToString:
+                    @"music-import-trigger"]
+        ) {
+            return triggerMusicImportBridge();
+        }
+
+        if (
+            [argument
                 isEqualToString:@"repeat-json"]
         ) {
             return printRepeatModeJSON();
@@ -2796,6 +2917,127 @@ int main(int argc, char *argv[]) {
                 isEqualToString:@"playlists-json"]
         ) {
             return printPlaylistsJSON();
+        }
+
+        if ([argument isEqualToString:@"songs-json"]) {
+            if (requireMediaLibraryAuthorization() != 0) return 1;
+            return MLCPrintAllSongsJSON();
+        }
+
+        if ([argument isEqualToString:@"song-play"] ||
+            [argument isEqualToString:@"song-playlists-json"] ||
+            [argument isEqualToString:@"song-add-to-playlist"]) {
+            if (argc < 3) {
+                fprintf(stderr, "Missing persistent ID\n");
+                return 2;
+            }
+            unsigned long long requestedID = 0;
+
+            if (
+                !parsePersistentID(
+                    argv[2],
+                    &requestedID
+                )
+            ) {
+                fprintf(
+                    stderr,
+                    "Invalid persistent ID\n"
+                );
+                return 2;
+            }
+            if (requireMediaLibraryAuthorization() != 0) return 1;
+            if ([argument isEqualToString:@"song-play"]) {
+                return MLCPlaySong(requestedID);
+            }
+            if ([argument isEqualToString:@"song-playlists-json"]) {
+                return MLCPrintSongPlaylistsJSON(requestedID);
+            }
+            if (argc < 4) {
+                fprintf(stderr, "Missing playlist name\n");
+                return 2;
+            }
+            return MLCAddSongToPlaylist(requestedID, joinArguments(argc, argv, 3));
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"song-remove-from-library"]
+        ) {
+            if (argc < 3) {
+                fprintf(
+                    stderr,
+                    "Usage: mediactl "
+                    "song-remove-from-library "
+                    "<persistent-id>\n"
+                );
+                return 2;
+            }
+
+            unsigned long long requestedID = 0;
+
+            if (
+                !parsePersistentID(
+                    argv[2],
+                    &requestedID
+                )
+            ) {
+                fprintf(
+                    stderr,
+                    "Invalid persistent ID\n"
+                );
+                return 2;
+            }
+
+            if (requireMediaLibraryAuthorization() != 0) {
+                return 1;
+            }
+
+            return MLCRemoveSongFromLibrary(requestedID);
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"song-remove-from-playlist"]
+        ) {
+            if (argc < 4) {
+                fprintf(
+                    stderr,
+                    "Usage: mediactl "
+                    "song-remove-from-playlist "
+                    "<persistent-id> "
+                    "\"Playlist Name\"\n"
+                );
+                return 2;
+            }
+
+            unsigned long long requestedID = 0;
+
+            if (
+                !parsePersistentID(
+                    argv[2],
+                    &requestedID
+                )
+            ) {
+                fprintf(
+                    stderr,
+                    "Invalid persistent ID\n"
+                );
+                return 2;
+            }
+
+            if (
+                requireMediaLibraryAuthorization()
+                != 0
+            ) {
+                return 1;
+            }
+
+            return MLCRemoveSongFromPlaylist(
+                requestedID,
+                joinArguments(argc, argv, 3)
+            );
         }
 
         if (
@@ -2830,27 +3072,18 @@ int main(int argc, char *argv[]) {
                 return 2;
             }
 
-            char *endPointer = NULL;
-            errno = 0;
-
-            unsigned long long requestedID =
-                strtoull(
-                    argv[2],
-                    &endPointer,
-                    10
-                );
+            unsigned long long requestedID = 0;
 
             if (
-                errno == ERANGE ||
-                endPointer == argv[2] ||
-                *endPointer != '\0' ||
-                requestedID == 0
+                !parsePersistentID(
+                    argv[2],
+                    &requestedID
+                )
             ) {
                 fprintf(
                     stderr,
                     "Invalid persistent ID\n"
                 );
-
                 return 2;
             }
 
@@ -2937,27 +3170,18 @@ int main(int argc, char *argv[]) {
                 return 2;
             }
 
-            char *endPointer =
-                NULL;
-
-            errno = 0;
-
-            double requestedVolume =
-                strtod(
-                    argv[2],
-                    &endPointer
-                );
+            double requestedVolume = 0.0;
 
             if (
-                errno == ERANGE ||
-                endPointer == argv[2] ||
-                *endPointer != '\0'
+                !parseFiniteDouble(
+                    argv[2],
+                    &requestedVolume
+                )
             ) {
                 fprintf(
                     stderr,
                     "Invalid volume\n"
                 );
-
                 return 2;
             }
 
@@ -2982,9 +3206,15 @@ int main(int argc, char *argv[]) {
             }
 
             NSString *value =
-                [NSString
-                    stringWithUTF8String:
-                        argv[2]];
+                stringArgument(argv[2]);
+
+            if (value == nil) {
+                fprintf(
+                    stderr,
+                    "Value is not valid UTF-8\n"
+                );
+                return 2;
+            }
 
             if (
                 [value
@@ -3027,25 +3257,18 @@ int main(int argc, char *argv[]) {
                 return 2;
             }
 
-            char *endPointer = NULL;
-            errno = 0;
-
-            double requestedTime =
-                strtod(
-                    argv[2],
-                    &endPointer
-                );
+            double requestedTime = 0.0;
 
             if (
-                errno == ERANGE ||
-                endPointer == argv[2] ||
-                *endPointer != '\0'
+                !parseFiniteDouble(
+                    argv[2],
+                    &requestedTime
+                )
             ) {
                 fprintf(
                     stderr,
                     "Invalid playback time\n"
                 );
-
                 return 2;
             }
 
@@ -3092,9 +3315,15 @@ int main(int argc, char *argv[]) {
             }
 
             NSString *uid =
-                [NSString
-                    stringWithUTF8String:
-                        argv[2]];
+                stringArgument(argv[2]);
+
+            if (uid == nil) {
+                fprintf(
+                    stderr,
+                    "AirPlay device UID is not valid UTF-8\n"
+                );
+                return 2;
+            }
 
             NSString *name =
                 argc >= 4
@@ -3126,9 +3355,15 @@ int main(int argc, char *argv[]) {
             }
 
             NSString *uid =
-                [NSString
-                    stringWithUTF8String:
-                        argv[2]];
+                stringArgument(argv[2]);
+
+            if (uid == nil) {
+                fprintf(
+                    stderr,
+                    "AirPlay device UID is not valid UTF-8\n"
+                );
+                return 2;
+            }
 
             NSString *name =
                 argc >= 4
