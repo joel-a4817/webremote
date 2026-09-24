@@ -1007,7 +1007,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
 <main>
   <section id="main-screen">
     <h1>iPad Music Remote</h1>
-    <div id="upload-complete-panel"></div>
+    <div id="upload-complete-panel" class="upload-complete-panel hidden" aria-live="polite"></div>
 
     <div class="section-heading"><div><div class="section-title">Apple Music</div><div class="section-subtitle">Library playback, queue modes and volume</div></div></div>
     <div class="now-playing">

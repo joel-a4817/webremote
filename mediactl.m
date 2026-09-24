@@ -2693,15 +2693,14 @@ static BOOL applySystemVolume(
         }
     }
 
-    MPMusicPlayerController *player =
-        [MPMusicPlayerController systemMusicPlayer];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    player.volume = (float)target;
-#pragma clang diagnostic pop
-    saveKnownSystemVolume(target);
-    usleep(100000);
-    return YES;
+    /*
+     * Never fall back to MPMusicPlayerController.volume. That property is
+     * application playback state and can be reapplied by Music during
+     * transport transitions such as pause/resume. Only AVSystemController
+     * may write system output volume, and only the explicit volume command
+     * reaches this function.
+     */
+    return NO;
 }
 
 static int printVolumeJSON(void) {
@@ -3476,7 +3475,19 @@ int main(int argc, char *argv[]) {
             [argument
                 isEqualToString:@"toggle"]
         ) {
-            return sendMediaRemoteCommand(2, "toggle");
+            MPMusicPlayerController *player =
+                [MPMusicPlayerController systemMusicPlayer];
+
+            if (
+                player.playbackState ==
+                MPMusicPlaybackStatePlaying
+            ) {
+                [player pause];
+            } else {
+                [player play];
+            }
+
+            return 0;
         }
 
         if (
@@ -3502,37 +3513,52 @@ int main(int argc, char *argv[]) {
             return lockDeviceOnly();
         }
 
+        MPMusicPlayerController *musicPlayer =
+            [MPMusicPlayerController systemMusicPlayer];
+
         if (
             [argument
                 isEqualToString:
                     @"play"]
         ) {
-            return sendMediaRemoteCommand(0, "play");
+            [musicPlayer play];
+            return 0;
         }
 
-        NSDictionary<NSString *, NSNumber *> *commands = @{
-            @"pause": @1,
-            @"next": @4,
-            @"previous": @5
-        };
-
-        NSNumber *command =
-            commands[argument];
-
-        if (command == nil) {
-            fprintf(
-                stderr,
-                "Unknown command: %s\n",
-                argv[1]
-            );
-
-            printUsage();
-            return 2;
+        if (
+            [argument
+                isEqualToString:
+                    @"pause"]
+        ) {
+            [musicPlayer pause];
+            return 0;
         }
 
-        return sendMediaRemoteCommand(
-            command.unsignedIntValue,
+        if (
+            [argument
+                isEqualToString:
+                    @"next"]
+        ) {
+            [musicPlayer skipToNextItem];
+            return 0;
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"previous"]
+        ) {
+            [musicPlayer skipToPreviousItem];
+            return 0;
+        }
+
+        fprintf(
+            stderr,
+            "Unknown command: %s\n",
             argv[1]
         );
+
+        printUsage();
+        return 2;
     }
 }
