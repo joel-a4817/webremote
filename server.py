@@ -23,6 +23,9 @@ ALLOWED_AUDIO_EXTENSIONS = {'.m4a', '.mp3', '.aac', '.alac', '.wav'}
 MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 PENDING_DUPLICATES = {}
 PENDING_DUPLICATE_TTL_SECONDS = 30 * 60
+PENDING_DUPLICATES_FILE = Path(
+    "/var/mobile/Media/PendingMusicDuplicates.json"
+)
 PENDING_DUPLICATES_LOCK = threading.Lock()
 FILZA_IMPORT_LOCK = threading.Lock()
 
@@ -932,6 +935,96 @@ button:active {
   text-size-adjust: 100%;
 }
 
+
+.playlist-management-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.playlist-management-button {
+  min-height: 46px;
+  padding: 10px 12px;
+  border-radius: 15px;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+#playlist-add-songs {
+  background:
+    linear-gradient(
+      135deg,
+      #2f8cff,
+      #765cff
+    );
+}
+
+#playlist-remove {
+  background:
+    linear-gradient(
+      135deg,
+      #8e3447,
+      #5e2737
+    );
+}
+
+#create-playlist {
+  margin: 0 0 12px;
+  background:
+    linear-gradient(
+      135deg,
+      #3a9e72,
+      #277a8d
+    );
+}
+
+.playlist-candidate-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  min-height: 62px;
+  padding: 10px 14px;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, .10);
+}
+
+.playlist-candidate-row input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+
+.playlist-candidate-details {
+  min-width: 0;
+}
+
+.playlist-candidate-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.playlist-candidate-artist {
+  display: block;
+  margin-top: 3px;
+  color: #aaa7b2;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+#playlist-add-selected {
+  min-height: 52px;
+  margin: 0 0 12px;
+  padding: 11px 14px;
+  border-radius: 17px;
+  background: #7b5cff;
+  font-size: 15px;
+  font-weight: 750;
+}
+
 </style>
 </head>
 
@@ -976,7 +1069,7 @@ button:active {
             type="range"
             min="0"
             max="100"
-            step="1"
+            step="6.25"
             value="0"
             aria-label="iPad volume"
           >
@@ -1122,6 +1215,15 @@ button:active {
 
     <div class="section-title">Playlists</div>
 
+
+    <button
+      id="create-playlist"
+      class="playlist-management-button"
+      type="button"
+    >
+      New Playlist
+    </button>
+
     <div
       id="playlist-list"
       class="list"
@@ -1146,6 +1248,25 @@ button:active {
       </h1>
 
       <div></div>
+    </div>
+
+
+    <div class="playlist-management-bar">
+      <button
+        id="playlist-add-songs"
+        class="playlist-management-button"
+        type="button"
+      >
+        Add Songs
+      </button>
+
+      <button
+        id="playlist-remove"
+        class="playlist-management-button"
+        type="button"
+      >
+        Remove Playlist
+      </button>
     </div>
 
     <input
@@ -1233,6 +1354,50 @@ button:active {
       id="airplay-list"
       class="airplay-list"
     ></div>
+  </section>
+
+
+  <section
+    id="playlist-add-screen"
+    class="hidden"
+  >
+    <div class="header-row">
+      <button
+        id="playlist-add-back"
+        class="back"
+        type="button"
+      >
+        Back
+      </button>
+
+      <h1 id="playlist-add-title">
+        Add Songs
+      </h1>
+
+      <div></div>
+    </div>
+
+    <input
+      id="playlist-add-search"
+      class="search-box"
+      type="search"
+      inputmode="search"
+      autocomplete="off"
+      placeholder="Search available songs"
+      aria-label="Search songs not in this playlist"
+    >
+
+    <div
+      id="playlist-add-list"
+      class="list"
+    ></div>
+
+    <button
+      id="playlist-add-selected"
+      type="button"
+    >
+      Add Selected Songs
+    </button>
   </section>
 
   <div id="status"></div>
@@ -1348,6 +1513,8 @@ const playlistSearchMessage =
   document.querySelector("#playlist-search-message");
 
 let allPlaylists = [];
+let currentPlaylistName = "";
+let playlistAddCandidates = [];
 
 function normalizeSearchText(value) {
   return String(value || "")
@@ -2676,6 +2843,7 @@ async function openPlaylist(name) {
   playlistSearchMessage.textContent = "";
   playlistSearchMessage.classList.add("hidden");
 
+  currentPlaylistName = name;
   playlistTitle.textContent = name;
 
   mainScreen.classList.add("hidden");
@@ -3045,7 +3213,15 @@ musicFiles.addEventListener('change', () => {
 });
 
 function showOnly(screen) {
-  for (const section of [mainScreen, playlistScreen, airPlayScreen, allSongsScreen, uploadScreen, songManageScreen]) {
+  for (const section of [
+    mainScreen,
+    playlistScreen,
+    airPlayScreen,
+    allSongsScreen,
+    uploadScreen,
+    songManageScreen,
+    playlistAddScreen
+  ]) {
     section.classList.toggle('hidden', section !== screen);
   }
 }
@@ -3113,57 +3289,198 @@ document.querySelector('#open-upload').addEventListener('click', () => {
 document.querySelector('#upload-back').addEventListener('click', () => showOnly(mainScreen));
 
 document.querySelector('#upload-submit').addEventListener('click', async () => {
-  if (!selectedUploadFiles.length) { setStatus('Choose at least one audio file'); return; }
-  const playlists = [...uploadPlaylistChecks.querySelectorAll('input:checked')].map(input => input.value);
+  if (!selectedUploadFiles.length) {
+    setStatus('Choose at least one audio file');
+    return;
+  }
+
+  const submitButton =
+    document.querySelector('#upload-submit');
+
+  const playlists = [
+    ...uploadPlaylistChecks.querySelectorAll(
+      'input:checked'
+    )
+  ].map(input => input.value);
+
   const data = new FormData();
-  for (const file of selectedUploadFiles) data.append('files', file, file.name);
-  data.append('playlists', JSON.stringify(playlists));
+
+  for (const file of selectedUploadFiles) {
+    data.append(
+      'files',
+      file,
+      file.name
+    );
+  }
+
+  data.append(
+    'playlists',
+    JSON.stringify(playlists)
+  );
+
+  submitButton.disabled = true;
+  submitButton.textContent = 'Importing…';
+
   try {
     setStatus('Importing music…');
-    const result = await readJSON('/api/music/import', {method:'POST', body:data});
 
-    for (const duplicate of (result.duplicates || [])) {
-      const uploaded = duplicate.uploaded || {};
-      const existing = duplicate.existing || {};
-      const label = [uploaded.title, uploaded.artist].filter(Boolean).join(' by ');
+    const result = await readJSON(
+      '/api/music/import',
+      {
+        method: 'POST',
+        body: data
+      }
+    );
+
+    const imported =
+      Array.isArray(result.imported)
+        ? result.imported
+        : [];
+
+    const duplicates =
+      Array.isArray(result.duplicates)
+        ? result.duplicates
+        : [];
+
+    const failed =
+      Array.isArray(result.failed)
+        ? [...result.failed]
+        : [];
+
+    const resolved = [];
+
+    for (const duplicate of duplicates) {
+      const uploaded =
+        duplicate.uploaded || {};
+
+      const label = [
+        uploaded.title,
+        uploaded.artist
+      ].filter(Boolean).join(' by ');
+
       const replace = confirm(
-        'Duplicate detected: ' + (label || 'same title and artist')
+        'Duplicate detected: '
+        + (
+          label
+          || duplicate.filename
+          || 'same title and artist'
+        )
         + '\n\nOK: replace the existing song'
         + '\nCancel: remove this upload'
       );
-      await readJSON('/api/music/duplicate-resolve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          token: duplicate.token,
-          action: replace ? 'replace' : 'remove-upload'
-        })
-      });
+
+      try {
+        const resolution = await readJSON(
+          '/api/music/duplicate-resolve',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json'
+            },
+            body: JSON.stringify({
+              token: duplicate.token,
+              action:
+                replace
+                  ? 'replace'
+                  : 'remove-upload'
+            })
+          }
+        );
+
+        resolved.push(resolution);
+
+      } catch (error) {
+        failed.push({
+          filename:
+            duplicate.filename
+            || label
+            || 'Duplicate',
+          error: error.message
+        });
+      }
     }
 
-    const count = result.imported.length + (result.duplicates || []).length;
-    const message = count === 1
-      ? 'Music upload complete: 1 song processed.'
-      : 'Music upload complete: ' + count + ' songs processed.';
+    const completedCount =
+      imported.length
+      + resolved.length;
 
-    selectedUploadFiles = [];
+    const failedCount =
+      failed.length;
+
+    let message =
+      completedCount === 1
+        ? 'Music upload complete: 1 song processed.'
+        : (
+            'Music upload complete: '
+            + completedCount
+            + ' songs processed.'
+          );
+
+    if (failedCount > 0) {
+      message += (
+        ' '
+        + failedCount
+        + (
+            failedCount === 1
+              ? ' file needs attention.'
+              : ' files need attention.'
+          )
+      );
+    }
+
+    const failedNames = new Set(
+      failed
+        .map(item => item.filename)
+        .filter(Boolean)
+    );
+
+    selectedUploadFiles =
+      selectedUploadFiles.filter(
+        file => failedNames.has(file.name)
+      );
+
     musicFiles.value = '';
     renderSelectedUploadFiles();
+
     await loadPlaylists();
 
-    uploadCompletePanel.textContent = message;
-    uploadCompletePanel.classList.remove('hidden');
+    uploadCompletePanel.textContent =
+      message;
+
+    uploadCompletePanel.classList.remove(
+      'hidden'
+    );
+
     showOnly(mainScreen);
-    window.scrollTo({top: 0, behavior: 'smooth'});
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+
     setStatus(message);
 
     setTimeout(() => {
-      if (uploadCompletePanel.textContent === message) {
-        uploadCompletePanel.classList.add('hidden');
+      if (
+        uploadCompletePanel.textContent
+        === message
+      ) {
+        uploadCompletePanel.classList.add(
+          'hidden'
+        );
         uploadCompletePanel.textContent = '';
       }
     }, 8000);
-  } catch (error) { setStatus(error.message); }
+
+  } catch (error) {
+    setStatus(error.message);
+
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent =
+      'Import Selected Files';
+  }
 });
 
 async function openSongManager(song) {
@@ -3221,6 +3538,414 @@ document.querySelector('#remove-from-library').addEventListener('click', async (
     button.textContent = 'Remove from Library';
   }
 });
+
+
+const playlistAddScreen =
+  document.querySelector(
+    "#playlist-add-screen"
+  );
+
+const playlistAddList =
+  document.querySelector(
+    "#playlist-add-list"
+  );
+
+const playlistAddSearch =
+  document.querySelector(
+    "#playlist-add-search"
+  );
+
+const playlistAddSelectedButton =
+  document.querySelector(
+    "#playlist-add-selected"
+  );
+
+playlistAddSearch.parentNode.insertBefore(
+  playlistAddSelectedButton,
+  playlistAddSearch
+);
+
+function renderPlaylistAddCandidates() {
+  const query = normalizeSearchText(
+    playlistAddSearch.value.trim()
+  );
+
+  playlistAddList.innerHTML = "";
+
+  const matches =
+    playlistAddCandidates.filter(
+      song =>
+        normalizeSearchText([
+          song.title,
+          song.artist,
+          song.album
+        ].filter(Boolean).join(" "))
+          .includes(query)
+    );
+
+  if (matches.length === 0) {
+    playlistAddList.textContent =
+      query
+        ? "No matching songs"
+        : "Every library song is already in this playlist";
+    return;
+  }
+
+  for (const song of matches) {
+    const label =
+      document.createElement("label");
+
+    label.className =
+      "playlist-candidate-row";
+
+    const input =
+      document.createElement("input");
+
+    input.type = "checkbox";
+    input.value = song.id;
+
+    const details =
+      document.createElement("span");
+
+    details.className =
+      "playlist-candidate-details";
+
+    const title =
+      document.createElement("span");
+
+    title.className =
+      "playlist-candidate-title";
+
+    title.textContent =
+      song.title || "Unknown title";
+
+    const artist =
+      document.createElement("span");
+
+    artist.className =
+      "playlist-candidate-artist";
+
+    artist.textContent = [
+      song.artist,
+      song.album
+    ].filter(Boolean).join(" • ");
+
+    details.append(
+      title,
+      artist
+    );
+
+    label.append(
+      input,
+      details
+    );
+
+    playlistAddList.appendChild(label);
+  }
+}
+
+async function openPlaylistAddSongs() {
+  if (!currentPlaylistName) {
+    return;
+  }
+
+  playlistAddSearch.value = "";
+  playlistAddList.textContent = "Loading…";
+
+  document.querySelector(
+    "#playlist-add-title"
+  ).textContent =
+    "Add to " + currentPlaylistName;
+
+  showOnly(playlistAddScreen);
+
+  try {
+    const [libraryResult, playlistResult] =
+      await Promise.all([
+        readJSON("/api/songs"),
+        readJSON(
+          "/api/playlist?name="
+          + encodeURIComponent(
+              currentPlaylistName
+            )
+        )
+      ]);
+
+    const librarySongs =
+      Array.isArray(libraryResult.songs)
+        ? libraryResult.songs
+        : [];
+
+    const playlistSongs =
+      Array.isArray(playlistResult.songs)
+        ? playlistResult.songs
+        : [];
+
+    const existingIDs =
+      new Set(
+        playlistSongs.map(
+          song => String(song.id)
+        )
+      );
+
+    playlistAddCandidates =
+      librarySongs.filter(
+        song =>
+          !existingIDs.has(
+            String(song.id)
+          )
+      );
+
+    renderPlaylistAddCandidates();
+
+  } catch (error) {
+    playlistAddList.textContent =
+      error.message;
+  }
+}
+
+playlistAddSearch.addEventListener(
+  "input",
+  renderPlaylistAddCandidates
+);
+
+document.querySelector(
+  "#playlist-add-songs"
+).addEventListener(
+  "click",
+  openPlaylistAddSongs
+);
+
+document.querySelector(
+  "#playlist-add-back"
+).addEventListener(
+  "click",
+  () => showOnly(playlistScreen)
+);
+
+playlistAddSelectedButton.addEventListener(
+  "click",
+  async () => {
+    const button =
+      playlistAddSelectedButton;
+
+    const identifiers = [
+      ...playlistAddList.querySelectorAll(
+        'input[type="checkbox"]:checked'
+      )
+    ].map(input => input.value);
+
+    if (identifiers.length === 0) {
+      setStatus("Select at least one song");
+      return;
+    }
+
+    const playlistName =
+      currentPlaylistName;
+
+    button.disabled = true;
+    button.textContent = "Adding…";
+
+    const failed = [];
+
+    try {
+      for (const identifier of identifiers) {
+        try {
+          await readJSON(
+            "/api/song/playlist",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+              body: JSON.stringify({
+                id: identifier,
+                playlist: playlistName,
+                included: true
+              })
+            }
+          );
+        } catch (error) {
+          failed.push(
+            error.message
+          );
+        }
+      }
+
+      playlistAddCandidates = [];
+      playlistAddSearch.value = "";
+      playlistAddList.innerHTML = "";
+
+      /*
+       * Close every other application screen before reloading
+       * the playlist. This prevents playlist-add-screen from
+       * remaining visible underneath playlist-screen.
+       */
+      showOnly(playlistScreen);
+
+      await openPlaylist(
+        playlistName
+      );
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+      });
+
+      if (failed.length > 0) {
+        setStatus(
+          failed.length
+          + (
+              failed.length === 1
+                ? " song addition failed"
+                : " song additions failed"
+            )
+        );
+      } else {
+        setStatus(
+          identifiers.length === 1
+            ? "Added 1 song"
+            : (
+                "Added "
+                + identifiers.length
+                + " songs"
+              )
+        );
+      }
+
+    } catch (error) {
+      /*
+       * Keep the selection screen available only when an
+       * unexpected outer failure prevents playlist reload.
+       */
+      showOnly(
+        playlistAddScreen
+      );
+
+      setStatus(
+        error.message
+      );
+
+    } finally {
+      button.disabled = false;
+      button.textContent =
+        "Add Selected Songs";
+    }
+  }
+);
+
+document.querySelector(
+  "#create-playlist"
+).addEventListener(
+  "click",
+  async () => {
+    const requested =
+      prompt("New playlist name");
+
+    if (requested === null) {
+      return;
+    }
+
+    const name = requested.trim();
+
+    if (!name) {
+      setStatus(
+        "Enter a playlist name"
+      );
+      return;
+    }
+
+    try {
+      await readJSON(
+        "/api/playlist/create",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+          body: JSON.stringify({
+            name: name
+          })
+        }
+      );
+
+      await loadPlaylists();
+      setStatus(
+        'Created playlist "' + name + '"'
+      );
+
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+);
+
+document.querySelector(
+  "#playlist-remove"
+).addEventListener(
+  "click",
+  async () => {
+    if (!currentPlaylistName) {
+      return;
+    }
+
+    if (
+      !confirm(
+        'Remove playlist "'
+        + currentPlaylistName
+        + '"?\n\n'
+        + "Songs will remain in your Apple Music library."
+      )
+    ) {
+      return;
+    }
+
+    const name = currentPlaylistName;
+    const button =
+      document.querySelector(
+        "#playlist-remove"
+      );
+
+    button.disabled = true;
+    button.textContent = "Removing…";
+
+    try {
+      await readJSON(
+        "/api/playlist/remove",
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+          body: JSON.stringify({
+            name: name
+          })
+        }
+      );
+
+      currentPlaylistName = "";
+      await loadPlaylists();
+      showOnly(mainScreen);
+
+      setStatus(
+        'Removed playlist "'
+        + name
+        + '". Songs were kept.'
+      );
+
+    } catch (error) {
+      setStatus(error.message);
+
+    } finally {
+      button.disabled = false;
+      button.textContent =
+        "Remove Playlist";
+    }
+  }
+);
 
 loadPlaylists();
 updateNowPlaying();
@@ -3397,7 +4122,96 @@ def bridge_request(payload, timeout=20):
 
 
 def valid_song_identifier(value):
-    return isinstance(value, str) and value.isdecimal() and int(value) != 0
+    return (
+        isinstance(value, str)
+        and value.isdecimal()
+        and int(value) != 0
+    )
+
+
+def save_pending_duplicates_locked():
+    PENDING_DUPLICATES_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    temporary = PENDING_DUPLICATES_FILE.with_suffix(
+        ".tmp"
+    )
+
+    temporary.write_text(
+        json.dumps(
+            PENDING_DUPLICATES,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+
+    os.replace(
+        temporary,
+        PENDING_DUPLICATES_FILE,
+    )
+
+
+def load_pending_duplicates():
+    try:
+        payload = json.loads(
+            PENDING_DUPLICATES_FILE.read_text(
+                encoding="utf-8"
+            )
+        )
+    except (
+        FileNotFoundError,
+        OSError,
+        json.JSONDecodeError,
+    ):
+        payload = {}
+
+    if not isinstance(payload, dict):
+        payload = {}
+
+    valid = {}
+
+    for token, pending in payload.items():
+        if (
+            isinstance(token, str)
+            and isinstance(pending, dict)
+            and isinstance(pending.get("new"), dict)
+            and isinstance(pending.get("existing"), dict)
+            and isinstance(pending.get("playlists"), list)
+            and isinstance(
+                pending.get("created"),
+                (int, float),
+            )
+        ):
+            valid[token] = pending
+
+    with PENDING_DUPLICATES_LOCK:
+        PENDING_DUPLICATES.clear()
+        PENDING_DUPLICATES.update(valid)
+
+
+def store_pending_duplicate(token, pending):
+    with PENDING_DUPLICATES_LOCK:
+        PENDING_DUPLICATES[token] = pending
+        save_pending_duplicates_locked()
+
+
+def get_pending_duplicate(token):
+    with PENDING_DUPLICATES_LOCK:
+        pending = PENDING_DUPLICATES.get(token)
+
+        if pending is None:
+            raise KeyError(token)
+
+        return dict(pending)
+
+
+def complete_pending_duplicate(token):
+    with PENDING_DUPLICATES_LOCK:
+        PENDING_DUPLICATES.pop(token, None)
+        save_pending_duplicates_locked()
 
 
 def prune_pending_duplicates():
@@ -3408,90 +4222,232 @@ def prune_pending_duplicates():
 
     with PENDING_DUPLICATES_LOCK:
         expired = [
-            token
+            (
+                token,
+                dict(pending),
+            )
             for token, pending
             in PENDING_DUPLICATES.items()
             if pending.get("created", 0) < cutoff
         ]
 
-        for token in expired:
+        for token, _pending in expired:
             PENDING_DUPLICATES.pop(
                 token,
                 None,
             )
 
+        if expired:
+            save_pending_duplicates_locked()
+
+    for token, pending in expired:
+        try:
+            identifier = str(
+                pending["new"]["id"]
+            )
+
+            remove_song_from_library(
+                identifier
+            )
+
+        except Exception:
+            # Keep an unresolved import managed if cleanup
+            # temporarily fails. It will be retried later.
+            pending["created"] = time.time()
+
+            with PENDING_DUPLICATES_LOCK:
+                PENDING_DUPLICATES[token] = pending
+                save_pending_duplicates_locked()
+
 
 def normalized_metadata_text(value):
     return " ".join(
-        unicodedata.normalize("NFKC", str(value or ""))
+        unicodedata.normalize(
+            "NFKC",
+            str(value or ""),
+        )
         .casefold()
         .split()
     )
 
 
 def song_duplicate_key(song):
-    title = normalized_metadata_text(song.get("title"))
-    artist = normalized_metadata_text(song.get("artist"))
+    title = normalized_metadata_text(
+        song.get("title")
+    )
+    artist = normalized_metadata_text(
+        song.get("artist")
+    )
+
     if not title or not artist:
         return None
+
     return title, artist
 
 
 def mediactl_object(arguments, timeout=15):
-    result = execute(arguments, timeout=timeout)
+    result = execute(
+        arguments,
+        timeout=timeout,
+    )
+
     if result.returncode != 0:
         raise RuntimeError(
             result.stderr.strip()
             or result.stdout.strip()
             or "mediactl failed"
         )
+
     try:
-        payload = json.loads(result.stdout)
+        payload = json.loads(
+            result.stdout
+        )
     except json.JSONDecodeError as error:
-        raise RuntimeError("mediactl returned invalid JSON") from error
+        raise RuntimeError(
+            "mediactl returned invalid JSON"
+        ) from error
+
     if not isinstance(payload, dict):
-        raise RuntimeError("mediactl returned invalid data")
+        raise RuntimeError(
+            "mediactl returned invalid data"
+        )
+
     return payload
 
 
 def library_songs():
-    payload = mediactl_object(["songs-json"])
+    payload = mediactl_object(
+        ["songs-json"]
+    )
     songs = payload.get("songs", [])
-    return songs if isinstance(songs, list) else []
+
+    if not isinstance(songs, list):
+        raise RuntimeError(
+            "Music returned an invalid song list"
+        )
+
+    return songs
+
+
+def wait_for_library_song(
+    identifier,
+    timeout=6.0,
+):
+    deadline = time.monotonic() + timeout
+
+    while True:
+        songs = library_songs()
+
+        match = next(
+            (
+                song
+                for song in songs
+                if str(song.get("id", ""))
+                == identifier
+            ),
+            None,
+        )
+
+        if match is not None:
+            return match
+
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                "Imported song was not returned "
+                "by the Music library"
+            )
+
+        time.sleep(0.25)
+
+
+def song_playlist_names(identifier):
+    payload = mediactl_object([
+        "song-playlists-json",
+        identifier,
+    ])
+
+    playlists = payload.get(
+        "playlists",
+        [],
+    )
+
+    if not isinstance(playlists, list):
+        raise RuntimeError(
+            "Music returned invalid playlist membership"
+        )
+
+    return [
+        item["name"].strip()
+        for item in playlists
+        if (
+            isinstance(item, dict)
+            and item.get("included") is True
+            and isinstance(item.get("name"), str)
+            and item["name"].strip()
+        )
+    ]
+
+
+def merge_playlist_names(*collections):
+    merged = []
+    seen = set()
+
+    for collection in collections:
+        for value in collection:
+            name = str(value).strip()
+
+            if name and name not in seen:
+                seen.add(name)
+                merged.append(name)
+
+    return merged
 
 
 def add_song_to_playlists(identifier, playlists):
-    for playlist in playlists:
+    for playlist in merge_playlist_names(playlists):
         result = execute([
             "song-add-to-playlist",
             identifier,
             playlist,
         ])
+
         if result.returncode != 0:
             raise RuntimeError(
                 result.stderr.strip()
                 or result.stdout.strip()
-                or "Could not add song to " + playlist
+                or "Could not add song to "
+                + playlist
             )
 
 
 def remove_song_from_library(identifier):
-    if not valid_song_identifier(str(identifier)):
-        raise ValueError("Invalid song ID")
+    if not valid_song_identifier(
+        str(identifier)
+    ):
+        raise ValueError(
+            "Invalid song ID"
+        )
 
     result = execute(
-        ["song-remove-from-library", str(identifier)],
+        [
+            "song-remove-from-library",
+            str(identifier),
+        ],
         timeout=15,
     )
+
     if result.returncode != 0:
         raise RuntimeError(
             result.stderr.strip()
             or result.stdout.strip()
-            or "Apple Music library removal failed"
+            or
+            "Apple Music library removal failed"
         )
 
     try:
-        payload = json.loads(result.stdout)
+        payload = json.loads(
+            result.stdout
+        )
     except json.JSONDecodeError as error:
         raise RuntimeError(
             "mediactl returned invalid removal data"
@@ -3790,6 +4746,42 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
 
 
+
+        if path == "/api/playlist/create":
+            try:
+                payload = self.read_json_body()
+                name = payload["name"]
+
+                if (
+                    not isinstance(name, str)
+                    or not name.strip()
+                ):
+                    raise ValueError
+
+                name = name.strip()
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid playlist name",
+                    },
+                )
+                return
+
+            self.mediactl_json([
+                "playlist-create",
+                name,
+            ])
+            return
+
         if path == "/api/song/play":
             try:
                 payload = self.read_json_body()
@@ -3819,145 +4811,432 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/music/import":
             staged_paths = []
+
             try:
                 prune_pending_duplicates()
-                content_length = int(self.headers.get("Content-Length", "0"))
-                if content_length <= 0 or content_length > MAX_UPLOAD_BYTES:
-                    raise ValueError("Invalid upload size")
+
+                content_length = int(
+                    self.headers.get(
+                        "Content-Length",
+                        "0",
+                    )
+                )
+
+                if (
+                    content_length <= 0
+                    or content_length
+                    > MAX_UPLOAD_BYTES
+                ):
+                    raise ValueError(
+                        "Invalid upload size"
+                    )
 
                 form = cgi.FieldStorage(
                     fp=self.rfile,
                     headers=self.headers,
                     environ={
                         "REQUEST_METHOD": "POST",
-                        "CONTENT_TYPE": self.headers.get("Content-Type", ""),
+                        "CONTENT_TYPE":
+                            self.headers.get(
+                                "Content-Type",
+                                "",
+                            ),
                     },
                     keep_blank_values=True,
                 )
-                playlists = json.loads(form.getfirst("playlists", "[]"))
-                if not isinstance(playlists, list) or not all(
-                    isinstance(value, str) and value.strip()
-                    for value in playlists
-                ):
-                    raise ValueError("Invalid playlist selection")
-                playlists = [value.strip() for value in playlists]
 
-                fields = form["files"] if "files" in form else []
+                playlists = json.loads(
+                    form.getfirst(
+                        "playlists",
+                        "[]",
+                    )
+                )
+
+                if (
+                    not isinstance(playlists, list)
+                    or not all(
+                        isinstance(value, str)
+                        and value.strip()
+                        for value in playlists
+                    )
+                ):
+                    raise ValueError(
+                        "Invalid playlist selection"
+                    )
+
+                playlists = merge_playlist_names(
+                    playlists
+                )
+
+                fields = (
+                    form["files"]
+                    if "files" in form
+                    else []
+                )
+
                 if not isinstance(fields, list):
                     fields = [fields]
+
                 if not fields:
-                    raise ValueError("No files uploaded")
+                    raise ValueError(
+                        "No files uploaded"
+                    )
 
                 existing_songs = library_songs()
                 existing_by_key = {}
+
                 for song in existing_songs:
                     key = song_duplicate_key(song)
-                    if key is not None:
-                        existing_by_key.setdefault(key, []).append(song)
 
-                MUSIC_UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
+                    if key is not None:
+                        existing_by_key.setdefault(
+                            key,
+                            [],
+                        ).append(song)
+
+                MUSIC_UPLOAD_DIRECTORY.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
                 imported = []
                 duplicates = []
+                failed = []
 
                 for field in fields:
-                    original = Path(field.filename or "upload.m4a").name
-                    extension = Path(original).suffix.lower()
-                    if extension not in ALLOWED_AUDIO_EXTENSIONS:
-                        raise ValueError("Unsupported audio file: " + original)
+                    original = Path(
+                        field.filename
+                        or "upload.m4a"
+                    ).name
 
-                    staging = MUSIC_UPLOAD_DIRECTORY / (str(uuid.uuid4()) + extension)
-                    staged_paths.append(staging)
-                    with staging.open("wb") as output:
-                        shutil.copyfileobj(field.file, output)
+                    staging = None
 
-                    response = bridge_request({
-                        "action": "import",
-                        "sourcePath": str(staging),
-                        "title": Path(original).stem,
-                    })
-                    if not staging.exists():
-                        staged_paths.remove(staging)
+                    try:
+                        extension = (
+                            Path(original)
+                            .suffix
+                            .lower()
+                        )
 
-                    identifier = str(response.get("persistentID", ""))
-                    refreshed = library_songs()
-                    imported_song = next(
-                        (song for song in refreshed if str(song.get("id", "")) == identifier),
-                        None,
-                    )
-                    if imported_song is None:
-                        raise RuntimeError("Imported song was not returned by the Music library")
+                        if (
+                            extension
+                            not in
+                            ALLOWED_AUDIO_EXTENSIONS
+                        ):
+                            raise ValueError(
+                                "Unsupported audio file: "
+                                + original
+                            )
 
-                    key = song_duplicate_key(imported_song)
-                    matches = existing_by_key.get(key, []) if key is not None else []
-                    if matches:
-                        token = str(uuid.uuid4())
-                        existing = matches[0]
-                        with PENDING_DUPLICATES_LOCK:
-                            PENDING_DUPLICATES[token] = {
-                                "new": imported_song,
-                                "existing": existing,
-                                "playlists": playlists,
-                                "created": time.time(),
-                            }
-                        duplicates.append({
-                            "token": token,
-                            "uploaded": imported_song,
-                            "existing": existing,
+                        staging = (
+                            MUSIC_UPLOAD_DIRECTORY
+                            / (
+                                str(uuid.uuid4())
+                                + extension
+                            )
+                        )
+
+                        staged_paths.append(staging)
+
+                        with staging.open("wb") as output:
+                            shutil.copyfileobj(
+                                field.file,
+                                output,
+                            )
+
+                        response = bridge_request({
+                            "action": "import",
+                            "sourcePath":
+                                str(staging),
+                            "title":
+                                Path(original).stem,
                         })
-                    else:
-                        add_song_to_playlists(identifier, playlists)
-                        imported.append(response)
-                        if key is not None:
-                            existing_by_key.setdefault(key, []).append(imported_song)
 
-                self.send_json(200, {
-                    "ok": True,
-                    "imported": imported,
-                    "duplicates": duplicates,
-                })
-            except Exception as error:
+                        if not staging.exists():
+                            staged_paths.remove(
+                                staging
+                            )
+
+                        identifier = str(
+                            response.get(
+                                "persistentID",
+                                "",
+                            )
+                        )
+
+                        if not valid_song_identifier(
+                            identifier
+                        ):
+                            raise RuntimeError(
+                                "Import returned "
+                                "an invalid song ID"
+                            )
+
+                        imported_song = (
+                            wait_for_library_song(
+                                identifier
+                            )
+                        )
+
+                        key = song_duplicate_key(
+                            imported_song
+                        )
+
+                        matches = (
+                            existing_by_key.get(
+                                key,
+                                [],
+                            )
+                            if key is not None
+                            else []
+                        )
+
+                        if matches:
+                            existing = matches[0]
+
+                            existing_identifier = str(
+                                existing.get(
+                                    "id",
+                                    "",
+                                )
+                            )
+
+                            memberships = (
+                                song_playlist_names(
+                                    existing_identifier
+                                )
+                            )
+
+                            target_playlists = (
+                                merge_playlist_names(
+                                    memberships,
+                                    playlists,
+                                )
+                            )
+
+                            token = str(
+                                uuid.uuid4()
+                            )
+
+                            store_pending_duplicate(
+                                token,
+                                {
+                                    "new":
+                                        imported_song,
+                                    "existing":
+                                        existing,
+                                    "playlists":
+                                        target_playlists,
+                                    "created":
+                                        time.time(),
+                                    "filename":
+                                        original,
+                                },
+                            )
+
+                            duplicates.append({
+                                "token": token,
+                                "filename": original,
+                                "uploaded":
+                                    imported_song,
+                                "existing":
+                                    existing,
+                                "playlists":
+                                    target_playlists,
+                            })
+
+                        else:
+                            add_song_to_playlists(
+                                identifier,
+                                playlists,
+                            )
+
+                            imported.append({
+                                "filename": original,
+                                "song":
+                                    imported_song,
+                                "import":
+                                    response,
+                            })
+
+                            if key is not None:
+                                existing_by_key.setdefault(
+                                    key,
+                                    [],
+                                ).append(
+                                    imported_song
+                                )
+
+                    except Exception as error:
+                        failed.append({
+                            "filename": original,
+                            "error": str(error),
+                        })
+
+                    finally:
+                        if (
+                            staging is not None
+                            and staging.exists()
+                        ):
+                            try:
+                                staging.unlink()
+                            except OSError:
+                                pass
+
+                            if staging in staged_paths:
+                                staged_paths.remove(
+                                    staging
+                                )
+
+                self.send_json(
+                    200,
+                    {
+                        "ok": True,
+                        "imported": imported,
+                        "duplicates": duplicates,
+                        "failed": failed,
+                    },
+                )
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+                OSError,
+                RuntimeError,
+                TimeoutError,
+            ) as error:
                 for staging in staged_paths:
                     try:
                         staging.unlink()
-                    except FileNotFoundError:
+                    except OSError:
                         pass
-                self.send_json(400, {"ok": False, "error": str(error)})
+
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": str(error),
+                    },
+                )
+
             return
 
         if path == "/api/music/duplicate-resolve":
             try:
                 prune_pending_duplicates()
+
                 payload = self.read_json_body()
                 token = payload["token"]
                 action = payload["action"]
-                if not isinstance(token, str) or action not in {"replace", "remove-upload"}:
-                    raise ValueError
-                with PENDING_DUPLICATES_LOCK:
-                    pending = PENDING_DUPLICATES.pop(token)
 
-                new_identifier = str(pending["new"]["id"])
-                existing_identifier = str(pending["existing"]["id"])
+                if (
+                    not isinstance(token, str)
+                    or not token
+                    or action not in {
+                        "replace",
+                        "remove-upload",
+                    }
+                ):
+                    raise ValueError(
+                        "Invalid duplicate decision"
+                    )
+
+                pending = get_pending_duplicate(
+                    token
+                )
+
+                new_identifier = str(
+                    pending["new"]["id"]
+                )
+                existing_identifier = str(
+                    pending["existing"]["id"]
+                )
+
+                if (
+                    not valid_song_identifier(
+                        new_identifier
+                    )
+                    or not valid_song_identifier(
+                        existing_identifier
+                    )
+                ):
+                    raise ValueError(
+                        "Invalid duplicate song ID"
+                    )
 
                 if action == "replace":
-                    remove_song_from_library(existing_identifier)
+                    # Configure the replacement completely before
+                    # removing the existing library item.
                     add_song_to_playlists(
                         new_identifier,
                         pending["playlists"],
                     )
-                    message = "Existing song replaced"
-                else:
-                    remove_song_from_library(new_identifier)
-                    message = "Uploaded duplicate removed"
 
-                self.send_json(200, {
-                    "ok": True,
-                    "action": action,
-                    "message": message,
-                })
+                    remove_song_from_library(
+                        existing_identifier
+                    )
+
+                    message = (
+                        "Existing song replaced"
+                    )
+
+                else:
+                    remove_song_from_library(
+                        new_identifier
+                    )
+
+                    message = (
+                        "Uploaded duplicate removed"
+                    )
+
+                # The token remains retryable until every required
+                # library operation has succeeded.
+                complete_pending_duplicate(
+                    token
+                )
+
+                self.send_json(
+                    200,
+                    {
+                        "ok": True,
+                        "action": action,
+                        "message": message,
+                        "filename":
+                            pending.get(
+                                "filename",
+                                "",
+                            ),
+                    },
+                )
+
             except KeyError:
-                self.send_json(400, {"ok": False, "error": "Duplicate decision expired"})
-            except Exception as error:
-                self.send_json(400, {"ok": False, "error": str(error)})
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error":
+                            "Duplicate decision expired",
+                    },
+                )
+
+            except (
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+                OSError,
+                RuntimeError,
+                TimeoutError,
+            ) as error:
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error": str(error),
+                    },
+                )
+
             return
 
         if path == "/api/volume":
@@ -4693,8 +5972,100 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         path = urlparse(self.path).path
+
+        if path == "/api/playlist/remove":
+            try:
+                payload = self.read_json_body()
+                name = payload["name"]
+
+                if (
+                    not isinstance(name, str)
+                    or not name.strip()
+                ):
+                    raise ValueError
+
+                name = name.strip()
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid playlist name",
+                    },
+                )
+                return
+
+            result = execute(
+                [
+                    "playlist-remove",
+                    name,
+                ],
+                timeout=40,
+            )
+
+            if result.returncode != 0:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error": (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or
+                            "Playlist removal failed"
+                        ),
+                    },
+                )
+                return
+
+            try:
+                response = json.loads(
+                    result.stdout
+                )
+            except json.JSONDecodeError:
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid playlist removal response",
+                    },
+                )
+                return
+
+            if not isinstance(response, dict):
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid playlist removal response",
+                    },
+                )
+                return
+
+            response["ok"] = True
+            self.send_json(
+                200,
+                response,
+            )
+            return
+
         if path != "/api/song/library":
-            self.send_json(404, {"ok": False, "error": "Not found"})
+            self.send_json(
+                404,
+                {
+                    "ok": False,
+                    "error": "Not found",
+                },
+            )
             return
 
         try:
@@ -4719,6 +6090,9 @@ class Server(ThreadingHTTPServer):
 
 
 def main():
+    load_pending_duplicates()
+    prune_pending_duplicates()
+
     server = Server(
         ("0.0.0.0", PORT),
         Handler,

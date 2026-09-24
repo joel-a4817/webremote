@@ -106,6 +106,27 @@ static void writeShuffleState(
     BOOL enabled,
     NSInteger rawMode
 ) {
+    NSDictionary *existing = [
+        NSDictionary
+        dictionaryWithContentsOfFile:
+            ShuffleStatePath
+    ];
+
+    NSNumber *existingEnabled =
+        existing[@"enabled"];
+
+    NSNumber *existingRawMode =
+        existing[@"rawMode"];
+
+    if (
+        existingEnabled != nil &&
+        existingRawMode != nil &&
+        existingEnabled.boolValue == enabled &&
+        existingRawMode.integerValue == rawMode
+    ) {
+        return;
+    }
+
     [@{
         @"enabled": @(enabled),
         @"mode": enabled ? @"songs" : @"off",

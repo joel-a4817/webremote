@@ -83,7 +83,17 @@ static NSDictionary *metadataForAudioFile(NSString *path, NSString *fallbackTitl
         }
         dispatch_semaphore_signal(semaphore);
     }];
-    dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC));
+    long waitResult = dispatch_semaphore_wait(
+        semaphore,
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            15 * NSEC_PER_SEC
+        )
+    );
+
+    if (waitResult != 0) {
+        metadata = nil;
+    }
 
     NSString *title = fallbackTitle ?: @"";
     NSData *artwork = nil;

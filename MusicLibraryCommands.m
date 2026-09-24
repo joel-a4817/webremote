@@ -5,8 +5,12 @@
 
 @interface MPMediaLibrary (MediaCtlPrivateLibraryRemoval)
 - (BOOL)deleteItems:(NSArray *)items;
+- (void)getPlaylistWithUUID:(NSUUID *)uuid
+    creationMetadata:(MPMediaPlaylistCreationMetadata *)metadata
+    completionHandler:(void (^)(MPMediaPlaylist *, NSError *))completion;
+- (BOOL)removePlaylist:(MPMediaPlaylist *)playlist;
+- (MPMediaPlaylist *)addPlaylistWithName:(NSString *)name;
 @end
-
 static void MLCPrintJSON(id object) {
     if (![NSJSONSerialization isValidJSONObject:object]) {
         fprintf(stderr, "Could not encode JSON\n");
@@ -171,6 +175,251 @@ int MLCAddSongToPlaylist(unsigned long long persistentID, NSString *playlistName
     MLCPrintJSON(@{@"id": @(persistentID).stringValue, @"playlist": MLCPlaylistName(playlist), @"included": @YES, @"changed": @YES});
     return 0;
 }
+
+
+static BOOL MLCValidPlaylistName(
+    NSString *playlistName
+) {
+    return (
+        [playlistName isKindOfClass:[NSString class]] &&
+        [playlistName
+            stringByTrimmingCharactersInSet:
+                NSCharacterSet
+                    .whitespaceAndNewlineCharacterSet]
+            .length > 0
+    );
+}
+
+
+int MLCCreatePlaylist(
+    NSString *playlistName
+) {
+    if (!MLCValidPlaylistName(playlistName)) {
+        fprintf(
+            stderr,
+            "Invalid playlist name\n"
+        );
+        return 2;
+    }
+
+    playlistName = [
+        playlistName
+        stringByTrimmingCharactersInSet:
+            NSCharacterSet
+                .whitespaceAndNewlineCharacterSet
+    ];
+
+    MPMediaPlaylist *existing =
+        MLCFindPlaylist(
+            playlistName
+        );
+
+    if (existing != nil) {
+        MLCPrintJSON(@{
+            @"name":
+                MLCPlaylistName(existing),
+            @"created": @NO,
+            @"changed": @NO
+        });
+        return 0;
+    }
+
+    MPMediaLibrary *library = [
+        MPMediaLibrary
+        defaultMediaLibrary
+    ];
+
+    SEL selector =
+        @selector(addPlaylistWithName:);
+
+    if (
+        library == nil ||
+        ![library
+            respondsToSelector:
+                selector]
+    ) {
+        fprintf(
+            stderr,
+            "Playlist creation selector "
+            "is unavailable\n"
+        );
+        return 1;
+    }
+
+    /*
+     * Runtime-verified on this iPadOS build:
+     *
+     * addPlaylistWithName:
+     * type encoding @24@0:8@16
+     *
+     * The method synchronously returns an Objective-C
+     * playlist object and takes one NSString argument.
+     */
+    MPMediaPlaylist *createdPlaylist = [
+        library
+        addPlaylistWithName:
+            playlistName
+    ];
+
+    if (createdPlaylist == nil) {
+        /*
+         * The database may still have accepted the operation.
+         * Perform a short, bounded verification before failing.
+         */
+        for (
+            NSUInteger attempt = 0;
+            attempt < 30;
+            attempt++
+        ) {
+            createdPlaylist =
+                MLCFindPlaylist(
+                    playlistName
+                );
+
+            if (createdPlaylist != nil) {
+                break;
+            }
+
+            usleep(100000);
+        }
+    }
+
+    if (createdPlaylist == nil) {
+        fprintf(
+            stderr,
+            "Apple Music rejected "
+            "the playlist creation\n"
+        );
+        return 1;
+    }
+
+    MLCPrintJSON(@{
+        @"name":
+            MLCPlaylistName(
+                createdPlaylist
+            ),
+        @"created": @YES,
+        @"changed": @YES
+    });
+
+    return 0;
+}
+
+
+int MLCRemovePlaylist(
+    NSString *playlistName
+) {
+    if (!MLCValidPlaylistName(playlistName)) {
+        fprintf(
+            stderr,
+            "Invalid playlist name\n"
+        );
+        return 2;
+    }
+
+    playlistName = [
+        playlistName
+        stringByTrimmingCharactersInSet:
+            NSCharacterSet
+                .whitespaceAndNewlineCharacterSet
+    ];
+
+    MPMediaPlaylist *playlist =
+        MLCFindPlaylist(
+            playlistName
+        );
+
+    if (playlist == nil) {
+        MLCPrintJSON(@{
+            @"name": playlistName,
+            @"removed": @YES,
+            @"changed": @NO,
+            @"songsPreserved": @YES
+        });
+        return 0;
+    }
+
+    MPMediaLibrary *library =
+        [MPMediaLibrary
+            defaultMediaLibrary];
+
+    SEL selector =
+        @selector(removePlaylist:);
+
+    if (
+        library == nil ||
+        ![library
+            respondsToSelector:
+                selector]
+    ) {
+        fprintf(
+            stderr,
+            "Playlist removal selector "
+            "is unavailable\n"
+        );
+        return 1;
+    }
+
+    /*
+     * Runtime-verified on this iPadOS build:
+     *
+     * removePlaylist:
+     * type encoding B24@0:8@16
+     *
+     * Therefore the method returns BOOL and accepts
+     * one Objective-C object argument.
+     */
+    BOOL submitted =
+        [library
+            removePlaylist:
+                playlist];
+
+    if (!submitted) {
+        fprintf(
+            stderr,
+            "Apple Music rejected "
+            "the playlist removal\n"
+        );
+        return 1;
+    }
+
+    /*
+     * Removing the playlist object does not call
+     * deleteItems:, so its songs remain in the library.
+     * Re-query until the asynchronous database update
+     * becomes visible.
+     */
+    for (
+        NSUInteger attempt = 0;
+        attempt < 50;
+        attempt++
+    ) {
+        usleep(100000);
+
+        if (
+            MLCFindPlaylist(
+                playlistName
+            ) == nil
+        ) {
+            MLCPrintJSON(@{
+                @"name": playlistName,
+                @"removed": @YES,
+                @"changed": @YES,
+                @"songsPreserved": @YES
+            });
+            return 0;
+        }
+    }
+
+    fprintf(
+        stderr,
+        "Playlist removal was accepted, "
+        "but the playlist still appears\n"
+    );
+
+    return 1;
+}
+
 
 int MLCRemoveSongFromLibrary(unsigned long long persistentID) {
     MPMediaItem *item = MLCFindSong(persistentID);

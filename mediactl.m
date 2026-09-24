@@ -112,6 +112,8 @@ static void printUsage(void) {
         "  mediactl authorization\n"
         "  mediactl authorize\n"
         "  mediactl playlists\n"
+        "  mediactl playlist-create \"Playlist Name\"\n"
+        "  mediactl playlist-remove \"Playlist Name\"\n"
         "  mediactl playlists-json\n"
         "  mediactl playlist \"Playlist Name\"\n"
         "  mediactl playlist-play \"Playlist Name\"\n"
@@ -2176,6 +2178,35 @@ static int runExecutable(
 
 
 static int restartMusicInstance(void) {
+    const char *killExecutable = NULL;
+
+    if (
+        access(
+            "/var/jb/usr/bin/killall",
+            X_OK
+        ) == 0
+    ) {
+        killExecutable =
+            "/var/jb/usr/bin/killall";
+
+    } else if (
+        access(
+            "/usr/bin/killall",
+            X_OK
+        ) == 0
+    ) {
+        killExecutable =
+            "/usr/bin/killall";
+    }
+
+    if (killExecutable == NULL) {
+        fprintf(
+            stderr,
+            "killall was not found\n"
+        );
+        return 1;
+    }
+
     char *killArguments[] = {
         "killall",
         "-9",
@@ -2186,29 +2217,54 @@ static int restartMusicInstance(void) {
 
     int killResult =
         runExecutable(
-            "/usr/bin/killall",
+            killExecutable,
             killArguments
         );
 
-    if (killResult != 0) {
-        killResult =
-            runExecutable(
-                "/var/jb/usr/bin/killall",
-                killArguments
-            );
-    }
-
+    /*
+     * killall can return nonzero when one target process
+     * was not running. Continue because uiopen will start
+     * a fresh Music instance either way.
+     */
     if (killResult != 0) {
         fprintf(
             stderr,
-            "Could not stop Music or "
-            "MusicUIService.\n"
+            "Music processes were not both running; "
+            "continuing with relaunch\n"
         );
-
-        return 1;
     }
 
     usleep(700000);
+
+    const char *openExecutable = NULL;
+
+    if (
+        access(
+            "/var/jb/usr/bin/uiopen",
+            X_OK
+        ) == 0
+    ) {
+        openExecutable =
+            "/var/jb/usr/bin/uiopen";
+
+    } else if (
+        access(
+            "/usr/bin/uiopen",
+            X_OK
+        ) == 0
+    ) {
+        openExecutable =
+            "/usr/bin/uiopen";
+    }
+
+    if (openExecutable == NULL) {
+        fprintf(
+            stderr,
+            "Music was stopped, but uiopen "
+            "was not found\n"
+        );
+        return 1;
+    }
 
     char *openArguments[] = {
         "uiopen",
@@ -2218,31 +2274,21 @@ static int restartMusicInstance(void) {
 
     int openResult =
         runExecutable(
-            "/usr/bin/uiopen",
+            openExecutable,
             openArguments
         );
 
     if (openResult != 0) {
-        openResult =
-            runExecutable(
-                "/var/jb/usr/bin/uiopen",
-                openArguments
-            );
-    }
-
-    if (openResult != 0) {
         fprintf(
             stderr,
-            "Music was killed but could "
-            "not be reopened.\n"
+            "Music was stopped but could "
+            "not be reopened\n"
         );
-
         return 1;
     }
 
     printf(
-        "Music and MusicUIService "
-        "restarted\n"
+        "Music and MusicUIService restarted\n"
     );
 
     return 0;
@@ -2946,8 +2992,35 @@ int main(int argc, char *argv[]) {
                 return 2;
             }
             if (requireMediaLibraryAuthorization() != 0) return 1;
-            if ([argument isEqualToString:@"song-play"]) {
-                return MLCPlaySong(requestedID);
+            if (
+                [argument
+                    isEqualToString:
+                        @"song-play"]
+            ) {
+                int playResult =
+                    MLCPlaySong(
+                        requestedID
+                    );
+
+                if (playResult != 0) {
+                    return playResult;
+                }
+
+                if (
+                    volumeLockedAtMaximum() &&
+                    !applySystemVolume(1.0)
+                ) {
+                    fprintf(
+                        stderr,
+                        "Song started, but 100%% "
+                        "system volume could not "
+                        "be applied\n"
+                    );
+
+                    return 1;
+                }
+
+                return 0;
             }
             if ([argument isEqualToString:@"song-playlists-json"]) {
                 return MLCPrintSongPlaylistsJSON(requestedID);
@@ -3093,6 +3166,64 @@ int main(int argc, char *argv[]) {
             return playSingleSong(
                 requestedName,
                 requestedID
+            );
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"playlist-create"]
+        ) {
+            if (argc < 3) {
+                fprintf(
+                    stderr,
+                    "Missing playlist name\n"
+                );
+                return 2;
+            }
+
+            if (
+                requireMediaLibraryAuthorization()
+                != 0
+            ) {
+                return 1;
+            }
+
+            return MLCCreatePlaylist(
+                joinArguments(
+                    argc,
+                    argv,
+                    2
+                )
+            );
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"playlist-remove"]
+        ) {
+            if (argc < 3) {
+                fprintf(
+                    stderr,
+                    "Missing playlist name\n"
+                );
+                return 2;
+            }
+
+            if (
+                requireMediaLibraryAuthorization()
+                != 0
+            ) {
+                return 1;
+            }
+
+            return MLCRemovePlaylist(
+                joinArguments(
+                    argc,
+                    argv,
+                    2
+                )
             );
         }
 
