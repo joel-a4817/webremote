@@ -4,6 +4,10 @@
 #import <dlfcn.h>
 #import <math.h>
 #import <objc/message.h>
+#import <errno.h>
+#import <stdint.h>
+#import <stdio.h>
+#import <stdlib.h>
 /*
  * The Theos SDK does not ship xpc/xpc.h.
  * Declare only the libxpc interfaces used here.
@@ -11,18 +15,9 @@
 typedef void *xpc_object_t;
 typedef xpc_object_t xpc_connection_t;
 
-struct _xpc_type_s;
-typedef const struct _xpc_type_s *xpc_type_t;
-
 typedef void (^xpc_handler_t)(
     xpc_object_t object
 );
-
-extern const struct _xpc_type_s
-    _xpc_type_error;
-
-#define XPC_TYPE_ERROR \
-    ((xpc_type_t)&_xpc_type_error)
 
 extern xpc_connection_t
 xpc_connection_create_mach_service(
@@ -71,26 +66,12 @@ xpc_dictionary_set_uint64(
     uint64_t value
 );
 
-extern xpc_object_t
-xpc_connection_send_message_with_reply_sync(
-    xpc_connection_t connection,
-    xpc_object_t message
-);
 extern void
 xpc_connection_send_message(
     xpc_connection_t connection,
     xpc_object_t message
 );
 
-extern xpc_type_t
-xpc_get_type(
-    xpc_object_t object
-);
-
-extern char *
-xpc_copy_description(
-    xpc_object_t object
-);
 #import <spawn.h>
 #import <string.h>
 #import <sys/wait.h>
@@ -101,7 +82,6 @@ xpc_copy_description(
 
 @interface AVSystemController : NSObject
 + (instancetype)sharedAVSystemController;
-- (float)volumeForCategory:(NSString *)category;
 - (BOOL)getVolume:(float *)volume
     forCategory:(NSString *)category;
 - (BOOL)setVolumeTo:(float)volume
@@ -132,9 +112,18 @@ static void printUsage(void) {
         "  mediactl playlists\n"
         "  mediactl playlists-json\n"
         "  mediactl playlist \"Playlist Name\"\n"
+        "  mediactl playlist-play \"Playlist Name\"\n"
+        "  mediactl shuffle-json\n"
+        "  mediactl shuffle-toggle\n"
         "  mediactl playlist-songs-json \"Playlist Name\"\n"
         "  mediactl song <persistent-id> \"Playlist Name\"\n"
         "  mediactl now-playing-json\n"
+        "  mediactl repeat-json\n"
+        "  mediactl repeat-cycle\n"
+        "  mediactl volume-json\n"
+        "  mediactl volume <0-1>\n"
+        "  mediactl volume-lock <on|off>\n"
+        "  mediactl seek <seconds>\n"
         "  mediactl lock-device\n"
         "  mediactl wake-screen\n"
         "  mediactl home-screen\n"
@@ -385,6 +374,11 @@ static int sendMediaRemoteCommand(
 static BOOL volumeLockedAtMaximum(void);
 static double currentSystemVolume(void);
 static BOOL applySystemVolume(double volume);
+static int resumeWithVolumePolicy(void);
+static int requestShuffleEnabled(
+    BOOL enabled,
+    BOOL printResult
+);
 
 
 static int togglePlaybackAtFullVolume(void) {
@@ -402,19 +396,7 @@ static int togglePlaybackAtFullVolume(void) {
         );
     }
 
-    BOOL locked =
-        volumeLockedAtMaximum();
-
-    if (locked) {
-        applySystemVolume(1.0);
-    }
-
-    return sendMediaRemoteCommand(
-        0,
-        locked
-            ? "play at 100% volume"
-            : "play without changing volume"
-    );
+    return resumeWithVolumePolicy();
 }
 
 
@@ -566,6 +548,137 @@ static NSString *safeMediaProperty(
 
     return @"";
 }
+
+static NSString *const
+RepeatPreferencesDomain =
+    @"com.joel.mediactl-repeat";
+
+
+static NSUserDefaults *
+repeatPreferences(void) {
+    return [
+        [NSUserDefaults alloc]
+        initWithSuiteName:
+            RepeatPreferencesDomain
+    ];
+}
+
+
+static NSString *normalizedRepeatMode(
+    NSString *mode
+) {
+    if ([mode isEqualToString:@"all"]) {
+        return @"all";
+    }
+
+    if ([mode isEqualToString:@"one"]) {
+        return @"one";
+    }
+
+    return @"off";
+}
+
+
+static NSString *savedRepeatMode(void) {
+    NSString *mode = [
+        repeatPreferences()
+        stringForKey:@"mode"
+    ];
+
+    return normalizedRepeatMode(mode);
+}
+
+
+static MPMusicRepeatMode musicRepeatMode(
+    NSString *mode
+) {
+    mode = normalizedRepeatMode(mode);
+
+    if ([mode isEqualToString:@"all"]) {
+        return MPMusicRepeatModeAll;
+    }
+
+    if ([mode isEqualToString:@"one"]) {
+        return MPMusicRepeatModeOne;
+    }
+
+    return MPMusicRepeatModeNone;
+}
+
+
+static BOOL saveRepeatMode(
+    NSString *mode
+) {
+    NSUserDefaults *preferences =
+        repeatPreferences();
+
+    [preferences
+        setObject:normalizedRepeatMode(mode)
+        forKey:@"mode"];
+
+    return [preferences synchronize];
+}
+
+
+static int applyRepeatMode(
+    NSString *mode
+) {
+    NSString *normalized =
+        normalizedRepeatMode(mode);
+
+    MPMusicPlayerController *player =
+        [MPMusicPlayerController
+            systemMusicPlayer];
+
+    player.repeatMode =
+        musicRepeatMode(normalized);
+
+    if (!saveRepeatMode(normalized)) {
+        fprintf(
+            stderr,
+            "Could not save repeat mode\n"
+        );
+        return 1;
+    }
+
+    /*
+     * Return the mode that was requested and saved. Reading repeatMode
+     * back immediately from a new command-line process can return
+     * MPMusicRepeatModeDefault even after the system player accepted it.
+     */
+    printJSONObject(@{
+        @"mode": normalized
+    });
+
+    return 0;
+}
+
+
+static int printRepeatModeJSON(void) {
+    printJSONObject(@{
+        @"mode": savedRepeatMode()
+    });
+
+    return 0;
+}
+
+
+static int cycleRepeatMode(void) {
+    NSString *current =
+        savedRepeatMode();
+    NSString *next = @"all";
+
+    if ([current isEqualToString:@"all"]) {
+        next = @"one";
+    } else if (
+        [current isEqualToString:@"one"]
+    ) {
+        next = @"off";
+    }
+
+    return applyRepeatMode(next);
+}
+
 
 static int printNowPlayingJSON(void) {
     MPMusicPlayerController *player =
@@ -819,12 +932,28 @@ static int playSingleSong(
     player.shuffleMode =
         MPMusicShuffleModeOff;
 
-    player.repeatMode =
-        MPMusicRepeatModeNone;
+    if (
+        requestShuffleEnabled(
+            NO,
+            NO
+        ) != 0
+    ) {
+        return 1;
+    }
 
-    [player setQueueWithItemCollection:singleItemQueue];
+    [player setQueueWithItemCollection:
+        singleItemQueue];
     [player prepareToPlay];
     [player play];
+
+    MPMusicRepeatMode repeatMode =
+        musicRepeatMode(
+            savedRepeatMode()
+        );
+
+    player.repeatMode = repeatMode;
+    usleep(150000);
+    player.repeatMode = repeatMode;
 
     printf(
         "Playing single song: %s\n",
@@ -837,8 +966,131 @@ static int playSingleSong(
     return 0;
 }
 
+static NSString *const ShuffleRequestPath =
+    @"/var/mobile/MediaCtlShuffle-request.plist";
+
+static NSString *const ShuffleStatePath =
+    @"/var/mobile/MediaCtlShuffle-state.plist";
+
+static BOOL writeShuffleRequest(BOOL enabled) {
+    return [@{
+        @"enabled": @(enabled),
+        @"updated": @(
+            [[NSDate date] timeIntervalSince1970]
+        )
+    } writeToFile:ShuffleRequestPath atomically:YES];
+}
+
+static void notifySpringBoardShuffle(void) {
+    CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR(
+            "com.joel.mediactl.shuffle-apply"
+        ),
+        NULL,
+        NULL,
+        true
+    );
+}
+
+static NSDictionary *springBoardShuffleState(void) {
+    NSDictionary *state = [NSDictionary
+        dictionaryWithContentsOfFile:
+            ShuffleStatePath];
+
+    return [state isKindOfClass:[NSDictionary class]]
+        ? state
+        : nil;
+}
+
+static NSString *const
+ShufflePreferencesDomain =
+    @"com.joel.mediactl-shuffle";
+
+static NSUserDefaults *shufflePreferences(void) {
+    return [[NSUserDefaults alloc]
+        initWithSuiteName:ShufflePreferencesDomain];
+}
+
+static BOOL savedShuffleEnabled(void) {
+    return [shufflePreferences()
+        boolForKey:@"enabled"];
+}
+
+static BOOL saveShuffleEnabled(BOOL enabled) {
+    NSUserDefaults *preferences = shufflePreferences();
+    [preferences setBool:enabled forKey:@"enabled"];
+    return [preferences synchronize];
+}
+
+static BOOL currentPublishedShuffleEnabled(void) {
+    NSDictionary *state =
+        springBoardShuffleState();
+    NSNumber *enabled =
+        state[@"enabled"];
+
+    if (enabled != nil) {
+        return enabled.boolValue;
+    }
+
+    return savedShuffleEnabled();
+}
+
+static int printShuffleJSON(void) {
+    BOOL enabled =
+        currentPublishedShuffleEnabled();
+
+    printJSONObject(@{
+        @"enabled": @(enabled),
+        @"mode": enabled ? @"songs" : @"off"
+    });
+
+    return 0;
+}
+
+static int requestShuffleEnabled(
+    BOOL enabled,
+    BOOL printResult
+) {
+    if (!writeShuffleRequest(enabled)) {
+        fprintf(
+            stderr,
+            "Could not write shuffle request\n"
+        );
+        return 1;
+    }
+
+    if (!saveShuffleEnabled(enabled)) {
+        fprintf(
+            stderr,
+            "Could not save shuffle preference\n"
+        );
+        return 1;
+    }
+
+    notifySpringBoardShuffle();
+
+    if (printResult) {
+        printJSONObject(@{
+            @"enabled": @(enabled),
+            @"mode": enabled ? @"songs" : @"off"
+        });
+    }
+
+    return 0;
+}
+
+static int toggleShuffle(void) {
+    return requestShuffleEnabled(
+        !currentPublishedShuffleEnabled(),
+        YES
+    );
+}
+
+
 static int playPlaylist(
-    NSString *requestedName
+    NSString *requestedName,
+    BOOL shuffled
 ) {
     if (requireMediaLibraryAuthorization() != 0) {
         return 1;
@@ -878,17 +1130,34 @@ static int playPlaylist(
     [player stop];
 
     player.shuffleMode =
-        MPMusicShuffleModeSongs;
+        shuffled
+            ? MPMusicShuffleModeSongs
+            : MPMusicShuffleModeOff;
 
-    player.repeatMode =
-        MPMusicRepeatModeNone;
+    if (
+        requestShuffleEnabled(
+            shuffled,
+            NO
+        ) != 0
+    ) {
+        return 1;
+    }
 
     [player setQueueWithItemCollection:playlist];
     [player prepareToPlay];
     [player play];
 
+    MPMusicRepeatMode repeatMode =
+        musicRepeatMode(
+            savedRepeatMode()
+        );
+
+    player.repeatMode = repeatMode;
+    usleep(150000);
+    player.repeatMode = repeatMode;
+
     printf(
-        "Playing shuffled playlist with repeat disabled: %s\n",
+        "Playing playlist: %s\n",
         playlistName(playlist).UTF8String
     );
 
@@ -1884,7 +2153,6 @@ static int restartMusicInstance(void) {
 }
 
 
-
 static int seekToPlaybackTime(
     NSTimeInterval requestedTime
 ) {
@@ -2276,10 +2544,7 @@ static int setPlaybackVolume(
     BOOL locked =
         volumeLockedAtMaximum();
 
-    double target =
-        requestedVolume;
-
-    if (!applySystemVolume(target)) {
+    if (!applySystemVolume(requestedVolume)) {
         fprintf(
             stderr,
             "Could not apply iPad system volume\n"
@@ -2331,7 +2596,7 @@ static int setVolumeLock(
         return 1;
     }
 
-double volume =
+    double volume =
         currentSystemVolume();
 
     printJSONObject(@{
@@ -2474,6 +2739,15 @@ int main(int argc, char *argv[]) {
             [NSString
                 stringWithUTF8String:argv[1]];
 
+        if (argument == nil) {
+            fprintf(
+                stderr,
+                "Command is not valid UTF-8\n"
+            );
+
+            return 2;
+        }
+
         if (
             [argument
                 isEqualToString:@"authorization"]
@@ -2498,6 +2772,20 @@ int main(int argc, char *argv[]) {
 
         if (
             [argument
+                isEqualToString:@"repeat-json"]
+        ) {
+            return printRepeatModeJSON();
+        }
+
+        if (
+            [argument
+                isEqualToString:@"repeat-cycle"]
+        ) {
+            return cycleRepeatMode();
+        }
+
+        if (
+            [argument
                 isEqualToString:@"now-playing-json"]
         ) {
             return printNowPlayingJSON();
@@ -2515,7 +2803,7 @@ int main(int argc, char *argv[]) {
                 isEqualToString:@"playlist-songs-json"]
         ) {
             if (argc < 3) {
-                fprintf(stderr, "Missing playlist name\\n");
+                fprintf(stderr, "Missing playlist name\n");
                 return 2;
             }
 
@@ -2542,13 +2830,25 @@ int main(int argc, char *argv[]) {
                 return 2;
             }
 
-            unsigned long long requestedID =
-                strtoull(argv[2], NULL, 10);
+            char *endPointer = NULL;
+            errno = 0;
 
-            if (requestedID == 0) {
+            unsigned long long requestedID =
+                strtoull(
+                    argv[2],
+                    &endPointer,
+                    10
+                );
+
+            if (
+                errno == ERANGE ||
+                endPointer == argv[2] ||
+                *endPointer != '\0' ||
+                requestedID == 0
+            ) {
                 fprintf(
                     stderr,
-                    "Invalid persistent ID\\n"
+                    "Invalid persistent ID\n"
                 );
 
                 return 2;
@@ -2571,6 +2871,31 @@ int main(int argc, char *argv[]) {
         }
 
         if (
+            [argument isEqualToString:@"shuffle-json"]
+        ) {
+            return printShuffleJSON();
+        }
+
+        if (
+            [argument isEqualToString:@"shuffle-toggle"]
+        ) {
+            return toggleShuffle();
+        }
+
+        if (
+            [argument isEqualToString:@"playlist-play"]
+        ) {
+            if (argc < 3) {
+                fprintf(stderr, "Missing playlist name\n");
+                return 2;
+            }
+            return playPlaylist(
+                joinArguments(argc, argv, 2),
+                NO
+            );
+        }
+
+        if (
             [argument
                 isEqualToString:@"playlist"]
         ) {
@@ -2587,7 +2912,7 @@ int main(int argc, char *argv[]) {
             NSString *requestedName =
                 joinArguments(argc, argv, 2);
 
-            return playPlaylist(requestedName);
+            return playPlaylist(requestedName, YES);
         }
 
         if (
@@ -2615,6 +2940,8 @@ int main(int argc, char *argv[]) {
             char *endPointer =
                 NULL;
 
+            errno = 0;
+
             double requestedVolume =
                 strtod(
                     argv[2],
@@ -2622,6 +2949,7 @@ int main(int argc, char *argv[]) {
                 );
 
             if (
+                errno == ERANGE ||
                 endPointer == argv[2] ||
                 *endPointer != '\0'
             ) {
@@ -2700,6 +3028,7 @@ int main(int argc, char *argv[]) {
             }
 
             char *endPointer = NULL;
+            errno = 0;
 
             double requestedTime =
                 strtod(
@@ -2708,6 +3037,7 @@ int main(int argc, char *argv[]) {
                 );
 
             if (
+                errno == ERANGE ||
                 endPointer == argv[2] ||
                 *endPointer != '\0'
             ) {
@@ -2877,7 +3207,6 @@ int main(int argc, char *argv[]) {
         }
 
         NSDictionary<NSString *, NSNumber *> *commands = @{
-            @"play": @0,
             @"pause": @1,
             @"next": @4,
             @"previous": @5

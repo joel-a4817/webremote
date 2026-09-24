@@ -18,7 +18,7 @@ TWEAK_NAME = MediaCtlLock MediaCtlRoutes
 
 MediaCtlLock_FILES = Tweak.x
 MediaCtlLock_CFLAGS = -fobjc-arc
-MediaCtlLock_FRAMEWORKS = Foundation CoreFoundation
+MediaCtlLock_FRAMEWORKS = Foundation CoreFoundation MediaPlayer
 
 MediaCtlRoutes_FILES = AirPlayRoutes.x
 MediaCtlRoutes_CFLAGS = -fobjc-arc

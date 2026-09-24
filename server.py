@@ -1,12 +1,11 @@
 #!/var/jb/usr/bin/python3
-import time
-import subprocess
-from pathlib import Path
-
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from subprocess import run
-from urllib.parse import parse_qs, urlparse
 import json
+import math
+import subprocess
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 MEDIACTL = "/var/jb/usr/local/bin/mediactl"
 PORT = 8765
@@ -14,6 +13,7 @@ PORT = 8765
 TRANSPORT_COMMANDS = {
     "/api/play": ["play"],
     "/api/pause": ["pause"],
+    "/api/toggle": ["toggle"],
     "/api/next": ["next"],
     "/api/previous": ["previous"],
 }
@@ -449,7 +449,8 @@ button:active {
 
 .playlist-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns:
+    minmax(0, 1fr) 72px 72px;
   gap: 9px;
 }
 
@@ -486,22 +487,6 @@ button:active {
 
   font-size: 13px;
   line-height: 1.35;
-}
-
-.shuffle-button {
-  width: 78px;
-  min-height: 68px;
-
-  border-radius: 19px;
-
-  font-size: 25px;
-
-  background:
-    linear-gradient(
-      135deg,
-      #fa2d55,
-      #8b5cff
-    );
 }
 
 .header-row {
@@ -545,15 +530,6 @@ button:active {
   font-size: 15px;
   font-weight: 750;
   line-height: 1.25;
-}
-
-#resume-music {
-  background:
-    linear-gradient(
-      135deg,
-      #28b96f,
-      #3b8cff
-    );
 }
 
 #airplay-devices {
@@ -648,6 +624,7 @@ button:active {
       #343846
     );
 }
+
 #restart-music {
   background:
     linear-gradient(
@@ -683,6 +660,149 @@ button:active {
   text-align: center;
   font-size: 14px;
 }
+
+
+/* Playlist and queue-control styles. */
+.playlist-play-button,
+.shuffle-button {
+  width: 72px;
+  min-width: 72px;
+  min-height: 68px;
+  padding: 8px 5px;
+  border-radius: 19px;
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif !important;
+  font-size: 13px !important;
+  font-style: normal !important;
+  font-weight: 750 !important;
+  line-height: 1.15 !important;
+  letter-spacing: normal !important;
+  text-align: center;
+  text-transform: none !important;
+  white-space: nowrap;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.playlist-play-button {
+  background: rgba(255, 255, 255, .16);
+}
+
+.shuffle-button {
+  background:
+    linear-gradient(
+      135deg,
+      #fa2d55,
+      #8b5cff
+    );
+}
+
+.queue-mode-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 9px;
+  margin-top: 10px;
+}
+
+#repeat-mode,
+#shuffle-queue {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px 8px;
+  border-radius: 14px;
+  -webkit-appearance: none;
+  appearance: none;
+  color: #d9d6e2;
+  background: rgba(255, 255, 255, .14);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif !important;
+  font-size: 13px !important;
+  font-style: normal !important;
+  font-weight: 750 !important;
+  line-height: 1.2 !important;
+  letter-spacing: normal !important;
+  text-align: center;
+  text-transform: none !important;
+  white-space: nowrap;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+#repeat-mode.repeat-active,
+#shuffle-queue.shuffle-active {
+  color: white;
+  background: #7b5cff;
+}
+
+#repeat-mode.control-busy,
+#shuffle-queue.control-busy {
+  opacity: .72;
+  pointer-events: none;
+}
+
+
+/* Song search controls. */
+.search-box {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 15px;
+  outline: none;
+  color: white;
+  background: rgba(255, 255, 255, .10);
+  font: inherit;
+  font-size: 15px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search-box::placeholder {
+  color: #aaa7b2;
+}
+
+.search-box:focus {
+  border-color: rgba(123, 92, 255, .85);
+  box-shadow: 0 0 0 3px rgba(123, 92, 255, .18);
+}
+
+.search-results {
+  display: grid;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.search-message {
+  padding: 10px 3px;
+  color: #aaa7b2;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.global-song-result {
+  min-height: 62px;
+  padding: 12px 15px;
+  border-radius: 17px;
+  text-align: left;
+  background: rgba(255, 255, 255, .10);
+}
+
+.global-song-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.global-song-details {
+  display: block;
+  margin-top: 4px;
+  color: #aaa7b2;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 </style>
 </head>
 
@@ -738,6 +858,23 @@ button:active {
         </div>
 
 
+        <div class="queue-mode-controls">
+          <button
+            id="repeat-mode"
+            type="button"
+            aria-label="Repeat mode off"
+          >
+            Repeat Off
+          </button>
+
+          <button
+            id="shuffle-queue"
+            type="button"
+            aria-label="Queue shuffle off"
+          >
+            Shuffle Off
+          </button>
+        </div>
         <div class="volume-lock-row">
           <span class="volume-lock-label">
             Set 100% when Play is pressed
@@ -758,6 +895,7 @@ button:active {
     <div class="controls">
       <button
         class="transport"
+        type="button"
         data-command="previous"
         aria-label="Previous track"
       >
@@ -774,6 +912,7 @@ button:active {
       <button
         class="transport"
         id="toggle"
+        type="button"
         data-command="toggle"
         aria-label="Play or pause"
       >
@@ -788,6 +927,7 @@ button:active {
 
       <button
         class="transport"
+        type="button"
         data-command="next"
         aria-label="Next track"
       >
@@ -846,6 +986,22 @@ button:active {
 
     <div class="section-title">Playlists</div>
 
+    <input
+      id="global-song-search"
+      class="search-box"
+      type="search"
+      inputmode="search"
+      autocomplete="off"
+      placeholder="Search songs in all playlists"
+      aria-label="Search songs in all playlists"
+    >
+
+    <div
+      id="global-song-results"
+      class="search-results"
+      aria-live="polite"
+    ></div>
+
     <div
       id="playlist-list"
       class="list"
@@ -860,6 +1016,7 @@ button:active {
       <button
         id="back"
         class="back"
+        type="button"
       >
         Back
       </button>
@@ -870,6 +1027,22 @@ button:active {
 
       <div></div>
     </div>
+
+    <input
+      id="playlist-song-search"
+      class="search-box"
+      type="search"
+      inputmode="search"
+      autocomplete="off"
+      placeholder="Search this playlist"
+      aria-label="Search songs in this playlist"
+    >
+
+    <div
+      id="playlist-search-message"
+      class="search-message hidden"
+      aria-live="polite"
+    ></div>
 
     <div
       id="song-list"
@@ -885,6 +1058,7 @@ button:active {
       <button
         id="airplay-back"
         class="back"
+        type="button"
       >
         Back
       </button>
@@ -951,6 +1125,14 @@ const volumeLock =
   document.querySelector(
     "#volume-lock"
   );
+const repeatModeButton =
+  document.querySelector(
+    "#repeat-mode"
+  );
+const shuffleQueueButton =
+  document.querySelector(
+    "#shuffle-queue"
+  );
 
 const toggleButton =
   document.querySelector("#toggle");
@@ -993,6 +1175,274 @@ const homeDeviceButton =
   document.querySelector(
     "#home-device"
   );
+
+const globalSongSearch =
+  document.querySelector("#global-song-search");
+const globalSongResults =
+  document.querySelector("#global-song-results");
+const playlistSongSearch =
+  document.querySelector("#playlist-song-search");
+const playlistSearchMessage =
+  document.querySelector("#playlist-search-message");
+
+let allPlaylists = [];
+let globalSearchTimer = null;
+let globalSearchGeneration = 0;
+let allPlaylistSongsPromise = null;
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .toLocaleLowerCase();
+}
+
+async function playSearchResult(
+  playlistName,
+  song
+) {
+  try {
+    await readJSON(
+      "/api/song",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          playlist: playlistName,
+          id: song.id
+        })
+      }
+    );
+    setStatus(
+      "Playing " + (song.title || "selected song")
+    );
+    setTimeout(updateNowPlaying, 350);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
+function createGlobalSongResult(
+  playlistName,
+  song
+) {
+  const button = document.createElement("button");
+  button.className = "global-song-result";
+  button.type = "button";
+
+  const title = document.createElement("span");
+  title.className = "global-song-title";
+  title.textContent = song.title || "Unknown title";
+
+  const details = document.createElement("span");
+  details.className = "global-song-details";
+  details.textContent = [
+    song.artist,
+    song.album,
+    playlistName
+  ].filter(Boolean).join(" • ");
+
+  button.append(title, details);
+  button.addEventListener(
+    "click",
+    () => playSearchResult(playlistName, song)
+  );
+  return button;
+}
+
+async function loadAllPlaylistSongs() {
+  if (allPlaylistSongsPromise !== null) {
+    return allPlaylistSongsPromise;
+  }
+
+  allPlaylistSongsPromise = (async () => {
+    const results = await Promise.allSettled(
+      allPlaylists.map(async playlist => {
+        const result = await readJSON(
+          "/api/playlist?name="
+          + encodeURIComponent(playlist.name)
+        );
+
+        return {
+          playlist: playlist.name,
+          songs: Array.isArray(result.songs)
+            ? result.songs
+            : []
+        };
+      })
+    );
+
+    const loaded = [];
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        loaded.push(result.value);
+      }
+    }
+
+    if (results.length > 0 && loaded.length === 0) {
+      throw new Error(
+        "Could not load songs from any playlist"
+      );
+    }
+
+    return loaded;
+  })();
+
+  try {
+    return await allPlaylistSongsPromise;
+  } catch (error) {
+    allPlaylistSongsPromise = null;
+    throw error;
+  }
+}
+
+async function runGlobalSongSearch(
+  requestedGeneration
+) {
+  const query = normalizeSearchText(
+    globalSongSearch.value.trim()
+  );
+
+  if (
+    requestedGeneration !== globalSearchGeneration
+  ) {
+    return;
+  }
+
+  globalSongResults.innerHTML = "";
+
+  if (!query) {
+    return;
+  }
+
+  const message = document.createElement("div");
+  message.className = "search-message";
+  message.textContent = "Searching all playlists…";
+  globalSongResults.appendChild(message);
+
+  try {
+    const collections =
+      await loadAllPlaylistSongs();
+
+    if (
+      requestedGeneration !== globalSearchGeneration
+    ) {
+      return;
+    }
+
+    const matches = [];
+    for (const collection of collections) {
+      for (const song of collection.songs) {
+        const haystack = normalizeSearchText([
+          song.title,
+          song.artist,
+          song.album,
+          collection.playlist
+        ].filter(Boolean).join(" "));
+
+        if (haystack.includes(query)) {
+          matches.push({
+            playlist: collection.playlist,
+            song: song
+          });
+        }
+      }
+    }
+
+    globalSongResults.innerHTML = "";
+
+    if (matches.length === 0) {
+      message.textContent = "No matching songs";
+      globalSongResults.appendChild(message);
+      return;
+    }
+
+    for (const match of matches.slice(0, 100)) {
+      globalSongResults.appendChild(
+        createGlobalSongResult(
+          match.playlist,
+          match.song
+        )
+      );
+    }
+
+    if (matches.length > 100) {
+      message.textContent =
+        "Showing the first 100 of "
+        + matches.length
+        + " matches";
+      globalSongResults.appendChild(message);
+    }
+  } catch (error) {
+    if (
+      requestedGeneration !== globalSearchGeneration
+    ) {
+      return;
+    }
+
+    globalSongResults.innerHTML = "";
+    message.textContent = error.message;
+    globalSongResults.appendChild(message);
+  }
+}
+
+function filterCurrentPlaylistSongs() {
+  const query = normalizeSearchText(
+    playlistSongSearch.value.trim()
+  );
+  let visible = 0;
+
+  for (const button of songList.querySelectorAll(
+    ".song-button"
+  )) {
+    const show = !query
+      || normalizeSearchText(button.textContent)
+          .includes(query);
+    button.classList.toggle("hidden", !show);
+    if (show) {
+      visible += 1;
+    }
+  }
+
+  playlistSearchMessage.classList.toggle(
+    "hidden",
+    visible !== 0 || !query
+  );
+  playlistSearchMessage.textContent =
+    visible === 0 && query
+      ? "No matching songs in this playlist"
+      : "";
+}
+
+globalSongSearch.addEventListener(
+  "input",
+  () => {
+    const generation = ++globalSearchGeneration;
+
+    if (globalSearchTimer !== null) {
+      clearTimeout(globalSearchTimer);
+    }
+
+    if (!globalSongSearch.value.trim()) {
+      globalSongResults.innerHTML = "";
+      return;
+    }
+
+    globalSearchTimer = setTimeout(
+      () => {
+        globalSearchTimer = null;
+        runGlobalSongSearch(generation);
+      },
+      220
+    );
+  }
+);
+
+playlistSongSearch.addEventListener(
+  "input",
+  filterCurrentPlaylistSongs
+);
 
 const ICONS = {
   play: `
@@ -1204,6 +1654,13 @@ async function commitPlaybackSeek() {
   const seconds =
     Number(playbackSeek.value);
 
+  if (liveSeekTimer !== null) {
+    clearTimeout(liveSeekTimer);
+    liveSeekTimer = null;
+  }
+
+  pendingLiveSeek = null;
+
   try {
     await readJSON(
       "/api/seek",
@@ -1278,6 +1735,7 @@ let volumeWriteInFlight = false;
 let pendingVolumeWrite = null;
 let volumeDragActive = false;
 let volumePollAbortController = null;
+let lastQueuedVolumeSent = null;
 
 function clampVolume(value) {
   const numeric = Number(value);
@@ -1418,6 +1876,7 @@ function queueVolume() {
   volumeTimer = setTimeout(
     () => {
       volumeTimer = null;
+      lastQueuedVolumeSent = requested;
       sendVolume(requested);
     },
     90
@@ -1445,7 +1904,15 @@ function finishVolumeDrag() {
     volumeTimer = null;
   }
 
-  sendVolume(volumeSlider.value);
+  const finalValue = clampVolume(
+    volumeSlider.value
+  );
+
+  if (lastQueuedVolumeSent !== finalValue) {
+    sendVolume(finalValue);
+  }
+
+  lastQueuedVolumeSent = null;
 }
 
 volumeSlider.addEventListener(
@@ -1509,6 +1976,161 @@ volumeLock.addEventListener(
   }
 );
 
+function renderShuffleMode(enabled) {
+  const active = Boolean(enabled);
+  shuffleQueueButton.classList.toggle(
+    "shuffle-active",
+    active
+  );
+  shuffleQueueButton.textContent =
+    active ? "Shuffle On" : "Shuffle Off";
+  shuffleQueueButton.setAttribute(
+    "aria-label",
+    active ? "Queue shuffle on" : "Queue shuffle off"
+  );
+}
+
+let shuffleReadInFlight = false;
+
+async function loadShuffleMode() {
+  if (shuffleReadInFlight) {
+    return;
+  }
+
+  shuffleReadInFlight = true;
+
+  try {
+    const result = await readJSON(
+      "/api/shuffle?time=" + Date.now()
+    );
+    renderShuffleMode(result.enabled);
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    shuffleReadInFlight = false;
+  }
+}
+
+let shuffleToggleInFlight = false;
+
+shuffleQueueButton.addEventListener(
+  "click",
+  async () => {
+    if (shuffleToggleInFlight) {
+      return;
+    }
+
+    shuffleToggleInFlight = true;
+    shuffleQueueButton.classList.add("control-busy");
+    shuffleQueueButton.setAttribute("aria-busy", "true");
+
+    try {
+      const result = await readJSON(
+        "/api/shuffle/toggle",
+        { method: "POST" }
+      );
+      renderShuffleMode(result.enabled);
+      setTimeout(loadShuffleMode, 300);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      shuffleToggleInFlight = false;
+      shuffleQueueButton.classList.remove("control-busy");
+      shuffleQueueButton.removeAttribute("aria-busy");
+    }
+  }
+);
+
+function renderRepeatMode(mode) {
+  const normalized =
+    mode === "all" || mode === "one"
+      ? mode
+      : "off";
+
+  repeatModeButton.dataset.mode = normalized;
+  repeatModeButton.classList.toggle(
+    "repeat-active",
+    normalized !== "off"
+  );
+
+  if (normalized === "all") {
+    repeatModeButton.textContent = "Repeat All";
+    repeatModeButton.setAttribute(
+      "aria-label",
+      "Repeat all enabled"
+    );
+    return;
+  }
+
+  if (normalized === "one") {
+    repeatModeButton.textContent = "Repeat 1";
+    repeatModeButton.setAttribute(
+      "aria-label",
+      "Repeat one enabled"
+    );
+    return;
+  }
+
+  repeatModeButton.textContent = "Repeat Off";
+  repeatModeButton.setAttribute(
+    "aria-label",
+    "Repeat mode off"
+  );
+}
+
+
+let repeatReadInFlight = false;
+
+async function loadRepeatMode() {
+  if (repeatReadInFlight) {
+    return;
+  }
+
+  repeatReadInFlight = true;
+
+  try {
+    const result = await readJSON(
+      "/api/repeat?time=" + Date.now()
+    );
+    renderRepeatMode(result.mode);
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    repeatReadInFlight = false;
+  }
+}
+
+
+let repeatToggleInFlight = false;
+
+repeatModeButton.addEventListener(
+  "click",
+  async () => {
+    if (repeatToggleInFlight) {
+      return;
+    }
+
+    repeatToggleInFlight = true;
+    repeatModeButton.classList.add("control-busy");
+    repeatModeButton.setAttribute("aria-busy", "true");
+
+    try {
+      const result = await readJSON(
+        "/api/repeat/cycle",
+        { method: "POST" }
+      );
+      renderRepeatMode(result.mode);
+      setTimeout(loadRepeatMode, 200);
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      repeatToggleInFlight = false;
+      repeatModeButton.classList.remove("control-busy");
+      repeatModeButton.removeAttribute("aria-busy");
+    }
+  }
+);
+
 function setToggleState(isPlaying) {
   toggleButton.innerHTML =
     isPlaying
@@ -1562,7 +2184,15 @@ async function readJSON(url, options = {}) {
   return result;
 }
 
+let nowPlayingReadInFlight = false;
+
 async function updateNowPlaying() {
+  if (nowPlayingReadInFlight) {
+    return;
+  }
+
+  nowPlayingReadInFlight = true;
+
   try {
     const data =
       await readJSON("/api/now-playing");
@@ -1573,11 +2203,8 @@ async function updateNowPlaying() {
 
       currentDetails.textContent = "";
 
-      toggleButton.textContent = "▶";
-      toggleButton.setAttribute(
-        "aria-label",
-        "Play"
-      );
+      setToggleState(false);
+      updateSeekDisplay(0, 0);
 
       return;
     }
@@ -1605,11 +2232,10 @@ async function updateNowPlaying() {
 
     currentDetails.textContent = "";
 
-    toggleButton.textContent = "▶";
-    toggleButton.setAttribute(
-      "aria-label",
-      "Play or pause"
-    );
+    setToggleState(false);
+    updateSeekDisplay(0, 0);
+  } finally {
+    nowPlayingReadInFlight = false;
   }
 }
 
@@ -1755,8 +2381,13 @@ async function loadAirPlayDevices() {
         "/api/airplay/devices"
       );
 
+    const devices =
+      Array.isArray(result.devices)
+        ? result.devices
+        : [];
+
     if (
-      result.devices.length === 0
+      devices.length === 0
     ) {
       airPlayList.textContent =
         "No external AirPlay devices are "
@@ -1769,7 +2400,7 @@ async function loadAirPlayDevices() {
 
     for (
       const device
-      of result.devices
+      of devices
     ) {
       const card =
         document.createElement("div");
@@ -1826,6 +2457,7 @@ async function loadAirPlayDevices() {
 
       connectButton.className =
         "airplay-connect-button";
+      connectButton.type = "button";
 
       connectButton.textContent =
         "Connect";
@@ -1844,6 +2476,7 @@ async function loadAirPlayDevices() {
 
       defaultButton.className =
         "airplay-default-button";
+      defaultButton.type = "button";
 
       defaultButton.textContent =
         device.default
@@ -1884,6 +2517,27 @@ async function loadAirPlayDevices() {
 }
 
 
+async function playPlaylistOrdered(name) {
+  try {
+    await readJSON(
+      "/api/playlist/play",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          playlist: name
+        })
+      }
+    );
+    setStatus("Playing " + name);
+    setTimeout(updateNowPlaying, 400);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
 async function shufflePlaylist(name) {
   try {
     await readJSON(
@@ -1916,19 +2570,25 @@ async function shufflePlaylist(name) {
 
 async function loadPlaylists() {
   playlistList.innerHTML = "";
+  allPlaylists = [];
+  allPlaylistSongsPromise = null;
 
   try {
     const data =
       await readJSON("/api/playlists");
 
-    if (data.playlists.length === 0) {
+    allPlaylists = Array.isArray(data.playlists)
+      ? data.playlists
+      : [];
+
+    if (allPlaylists.length === 0) {
       playlistList.textContent =
         "No playlists available";
 
       return;
     }
 
-    for (const playlist of data.playlists) {
+    for (const playlist of allPlaylists) {
       const row =
         document.createElement("div");
 
@@ -1939,6 +2599,7 @@ async function loadPlaylists() {
 
       openButton.className =
         "playlist-button";
+      openButton.type = "button";
 
       const name =
         document.createElement("span");
@@ -1975,13 +2636,30 @@ async function loadPlaylists() {
         }
       );
 
+      const plainPlayButton =
+        document.createElement("button");
+      plainPlayButton.className =
+        "playlist-play-button";
+      plainPlayButton.type = "button";
+      plainPlayButton.textContent = "Play";
+      plainPlayButton.setAttribute(
+        "aria-label",
+        "Play " + playlist.name
+      );
+      plainPlayButton.addEventListener(
+        "click",
+        () => {
+          playPlaylistOrdered(playlist.name);
+        }
+      );
       const shuffleButton =
         document.createElement("button");
 
       shuffleButton.className =
         "shuffle-button";
+      shuffleButton.type = "button";
 
-      shuffleButton.textContent = "⤨";
+      shuffleButton.textContent = "Shuffle";
 
       shuffleButton.setAttribute(
         "aria-label",
@@ -1997,6 +2675,7 @@ async function loadPlaylists() {
 
       row.append(
         openButton,
+        plainPlayButton,
         shuffleButton
       );
 
@@ -2010,6 +2689,9 @@ async function loadPlaylists() {
 
 async function openPlaylist(name) {
   songList.innerHTML = "";
+  playlistSongSearch.value = "";
+  playlistSearchMessage.textContent = "";
+  playlistSearchMessage.classList.add("hidden");
 
   playlistTitle.textContent = name;
 
@@ -2027,19 +2709,25 @@ async function openPlaylist(name) {
 
     statusBox.textContent = "";
 
-    if (data.songs.length === 0) {
+    const songs =
+      Array.isArray(data.songs)
+        ? data.songs
+        : [];
+
+    if (songs.length === 0) {
       songList.textContent =
         "This playlist has no available songs";
 
       return;
     }
 
-    for (const song of data.songs) {
+    for (const song of songs) {
       const button =
         document.createElement("button");
 
       button.className =
         "song-button";
+      button.type = "button";
 
       const title =
         document.createElement("span");
@@ -2232,9 +2920,19 @@ homeDeviceButton.addEventListener(
 loadPlaylists();
 updateNowPlaying();
 loadVolumeState();
+loadRepeatMode();
+loadShuffleMode();
 
 setInterval(
   updateNowPlaying,
+  2000
+);
+setInterval(
+  loadRepeatMode,
+  2000
+);
+setInterval(
+  loadShuffleMode,
   2000
 );
 setInterval(
@@ -2247,52 +2945,47 @@ setInterval(
 """
 
 
+def timeout_process_result(
+    error,
+    message,
+):
+    stdout = error.stdout or ""
+
+    if isinstance(stdout, bytes):
+        stdout = stdout.decode(
+            "utf-8",
+            errors="replace",
+        )
+
+    stderr = error.stderr or ""
+
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode(
+            "utf-8",
+            errors="replace",
+        )
+
+    return subprocess.CompletedProcess(
+        error.cmd,
+        124,
+        stdout,
+        stderr.strip() or message,
+    )
+
+
 def execute(arguments, timeout=10):
     try:
-        return run(
+        return subprocess.run(
             [MEDIACTL, *arguments],
             capture_output=True,
             text=True,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as error:
-        return subprocess.CompletedProcess(
-            error.cmd,
-            124,
-            error.stdout or "",
+        return timeout_process_result(
+            error,
             "mediactl timed out",
         )
-
-
-
-def execute_toggle():
-    state = execute(
-        ["now-playing-json"]
-    )
-
-    if state.returncode != 0:
-        return state, "unknown"
-
-    try:
-        now_playing = json.loads(
-            state.stdout
-        )
-    except json.JSONDecodeError:
-        return execute(
-            ["resume"]
-        ), "play"
-
-    if now_playing.get(
-        "playing",
-        False
-    ):
-        return execute(
-            ["pause"]
-        ), "pause"
-
-    return execute(
-        ["resume"]
-    ), "play"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2307,13 +3000,24 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self.end_headers()
-        self.wfile.write(data)
+
+        try:
+            self.wfile.write(data)
+        except (
+            BrokenPipeError,
+            ConnectionResetError,
+        ):
+            pass
 
     def send_json(self, status, payload):
         self.send_data(
             status,
             "application/json; charset=utf-8",
-            json.dumps(payload).encode()
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
         )
 
     def mediactl_json(self, arguments):
@@ -2345,20 +3049,47 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if not isinstance(payload, dict):
+            self.send_json(
+                500,
+                {
+                    "ok": False,
+                    "error":
+                        "mediactl returned a non-object JSON value",
+                },
+            )
+            return
+
         payload["ok"] = True
         self.send_json(200, payload)
 
     def read_json_body(self):
-        length = int(
-            self.headers.get("Content-Length", "0")
+        raw_length = self.headers.get(
+            "Content-Length",
+            "0",
         )
 
-        if length <= 0:
+        try:
+            length = int(raw_length)
+        except (TypeError, ValueError):
+            raise ValueError("Invalid Content-Length")
+
+        if length < 0 or length > 1048576:
+            raise ValueError("Invalid Content-Length")
+
+        if length == 0:
             return {}
 
-        return json.loads(
+        payload = json.loads(
             self.rfile.read(length)
         )
+
+        if not isinstance(payload, dict):
+            raise ValueError(
+                "JSON body must be an object"
+            )
+
+        return payload
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -2378,6 +3109,18 @@ class Handler(BaseHTTPRequestHandler):
                 ["volume-json"]
             )
             return
+        if path == "/api/repeat":
+            self.mediactl_json(
+                ["repeat-json"]
+            )
+            return
+
+        if path == "/api/shuffle":
+            self.mediactl_json(
+                ["shuffle-json"]
+            )
+            return
+
         if path == "/api/now-playing":
             self.mediactl_json(
                 ["now-playing-json"]
@@ -2407,10 +3150,8 @@ class Handler(BaseHTTPRequestHandler):
                         timeout=5,
                     )
                 except subprocess.TimeoutExpired as error:
-                    open_music = subprocess.CompletedProcess(
-                        error.cmd,
-                        124,
-                        error.stdout or "",
+                    open_music = timeout_process_result(
+                        error,
                         "uiopen timed out",
                     )
                 break
@@ -2482,7 +3223,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/playlist":
-            name = query.get("name", [""])[0]
+            name = query.get(
+                "name",
+                [""],
+            )[0].strip()
 
             if not name:
                 self.send_json(
@@ -2518,7 +3262,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 payload = self.read_json_body()
                 percent = float(payload["percent"])
-                if percent < 0 or percent > 100:
+
+                if (
+                    not math.isfinite(percent)
+                    or percent < 0
+                    or percent > 100
+                ):
                     raise ValueError
             except (
                 KeyError,
@@ -2564,6 +3313,48 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
 
+            volume_value = (
+                response.get("volume")
+                if isinstance(response, dict)
+                else None
+            )
+
+            percent_value = (
+                response.get("percent")
+                if isinstance(response, dict)
+                else None
+            )
+
+            if (
+                not isinstance(response, dict)
+                or isinstance(volume_value, bool)
+                or not isinstance(
+                    volume_value,
+                    (int, float),
+                )
+                or not math.isfinite(
+                    float(volume_value)
+                )
+                or isinstance(percent_value, bool)
+                or not isinstance(
+                    percent_value,
+                    int,
+                )
+                or not isinstance(
+                    response.get("locked"),
+                    bool,
+                )
+            ):
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid volume response schema",
+                    },
+                )
+                return
+
             response["ok"] = True
             self.send_json(200, response)
             return
@@ -2577,6 +3368,7 @@ class Handler(BaseHTTPRequestHandler):
             except (
                 KeyError,
                 TypeError,
+                ValueError,
                 json.JSONDecodeError,
             ):
                 self.send_json(
@@ -2620,6 +3412,48 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
 
+            volume_value = (
+                response.get("volume")
+                if isinstance(response, dict)
+                else None
+            )
+
+            percent_value = (
+                response.get("percent")
+                if isinstance(response, dict)
+                else None
+            )
+
+            if (
+                not isinstance(response, dict)
+                or isinstance(volume_value, bool)
+                or not isinstance(
+                    volume_value,
+                    (int, float),
+                )
+                or not math.isfinite(
+                    float(volume_value)
+                )
+                or isinstance(percent_value, bool)
+                or not isinstance(
+                    percent_value,
+                    int,
+                )
+                or not isinstance(
+                    response.get("locked"),
+                    bool,
+                )
+            ):
+                self.send_json(
+                    500,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid volume-lock response schema",
+                    },
+                )
+                return
+
             response["ok"] = True
             self.send_json(200, response)
             return
@@ -2632,7 +3466,10 @@ class Handler(BaseHTTPRequestHandler):
                     payload["seconds"]
                 )
 
-                if seconds < 0:
+                if (
+                    not math.isfinite(seconds)
+                    or seconds < 0
+                ):
                     raise ValueError
 
             except (
@@ -2684,8 +3521,42 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        if path == "/api/toggle":
-            result, action = execute_toggle()
+        if path == "/api/playlist/play":
+            try:
+                payload = self.read_json_body()
+
+                playlist = payload["playlist"]
+
+                if (
+                    not isinstance(playlist, str)
+                    or not playlist.strip()
+                ):
+                    raise ValueError
+
+                playlist = playlist.strip()
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
+                self.send_json(
+                    400,
+                    {
+                        "ok": False,
+                        "error":
+                            "Invalid playlist play request",
+                    },
+                )
+                return
+
+            result = execute(
+                [
+                    "playlist-play",
+                    playlist,
+                ]
+            )
 
             succeeded = (
                 result.returncode == 0
@@ -2694,20 +3565,38 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(
                 200 if succeeded else 500,
                 {
-                    "ok": succeeded,
-                    "action": action,
+                    "ok":
+                        succeeded,
+
+                    "message": (
+                        "Playing " + playlist
+                        if succeeded
+                        else ""
+                    ),
+
                     "stdout":
                         result.stdout.strip(),
+
                     "error": (
                         ""
                         if succeeded
                         else (
                             result.stderr.strip()
                             or result.stdout.strip()
-                            or "Toggle failed"
+                            or "Playlist play failed"
                         )
-                    )
-                }
+                    ),
+                },
+            )
+            return
+
+        if path == "/api/shuffle/toggle":
+            self.mediactl_json(["shuffle-toggle"])
+            return
+
+        if path == "/api/repeat/cycle":
+            self.mediactl_json(
+                ["repeat-cycle"]
             )
             return
 
@@ -2721,7 +3610,15 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": result.returncode == 0,
                     "stdout": result.stdout.strip(),
-                    "error": result.stderr.strip()
+                    "error": (
+                        ""
+                        if result.returncode == 0
+                        else (
+                            result.stderr.strip()
+                            or result.stdout.strip()
+                            or "Transport command failed"
+                        )
+                    ),
                 }
             )
             return
@@ -2729,9 +3626,26 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/airplay/connect-device":
             try:
                 payload = self.read_json_body()
-                uid = str(payload["uid"])
-                name = str(payload["name"])
-            except Exception:
+                uid = payload["uid"]
+                name = payload["name"]
+
+                if (
+                    not isinstance(uid, str)
+                    or not isinstance(name, str)
+                    or not uid.strip()
+                    or not name.strip()
+                ):
+                    raise ValueError
+
+                uid = uid.strip()
+                name = name.strip()
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
                 self.send_json(
                     400,
                     {
@@ -2781,9 +3695,26 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/airplay/default":
             try:
                 payload = self.read_json_body()
-                uid = str(payload["uid"])
-                name = str(payload["name"])
-            except Exception:
+                uid = payload["uid"]
+                name = payload["name"]
+
+                if (
+                    not isinstance(uid, str)
+                    or not isinstance(name, str)
+                    or not uid.strip()
+                    or not name.strip()
+                ):
+                    raise ValueError
+
+                uid = uid.strip()
+                name = name.strip()
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
                 self.send_json(
                     400,
                     {
@@ -2957,8 +3888,22 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/shuffle":
             try:
                 payload = self.read_json_body()
-                playlist = str(payload["playlist"])
-            except Exception:
+                playlist = payload["playlist"]
+
+                if (
+                    not isinstance(playlist, str)
+                    or not playlist.strip()
+                ):
+                    raise ValueError
+
+                playlist = playlist.strip()
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
                 self.send_json(
                     400,
                     {
@@ -2988,9 +3933,26 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/song":
             try:
                 payload = self.read_json_body()
-                playlist = str(payload["playlist"])
-                identifier = str(payload["id"])
-            except Exception:
+                playlist = payload["playlist"]
+                identifier = payload["id"]
+
+                if (
+                    not isinstance(playlist, str)
+                    or not playlist.strip()
+                    or not isinstance(identifier, str)
+                    or not identifier.isdecimal()
+                    or int(identifier) == 0
+                ):
+                    raise ValueError
+
+                playlist = playlist.strip()
+
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ):
                 self.send_json(
                     400,
                     {
@@ -3030,12 +3992,29 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-print(
-    f"Web remote listening on port {PORT}",
-    flush=True
-)
+class Server(ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
 
-ThreadingHTTPServer(
-    ("0.0.0.0", PORT),
-    Handler
-).serve_forever()
+
+def main():
+    server = Server(
+        ("0.0.0.0", PORT),
+        Handler,
+    )
+
+    print(
+        f"Web remote listening on port {PORT}",
+        flush=True,
+    )
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

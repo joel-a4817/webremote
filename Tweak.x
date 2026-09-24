@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <MediaPlayer/MediaPlayer.h>
 #import <math.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <objc/message.h>
@@ -84,6 +85,117 @@ static void receivedSystemVolumeNotification(
     } else {
         captureCurrentSystemVolume();
     }
+}
+
+static CFStringRef const ShuffleNotification =
+    CFSTR(
+        "com.joel.mediactl.shuffle-apply"
+    );
+
+static NSString *const ShuffleRequestPath =
+    @"/var/mobile/MediaCtlShuffle-request.plist";
+
+static NSString *const ShuffleStatePath =
+    @"/var/mobile/MediaCtlShuffle-state.plist";
+
+static NSInteger const ShuffleModeOff = 1;
+static NSInteger const ShuffleModeSongs = 2;
+static NSInteger const ShuffleModeAlbums = 3;
+
+static void writeShuffleState(
+    BOOL enabled,
+    NSInteger rawMode
+) {
+    [@{
+        @"enabled": @(enabled),
+        @"mode": enabled ? @"songs" : @"off",
+        @"rawMode": @(rawMode),
+        @"updated": @(
+            [[NSDate date] timeIntervalSince1970]
+        )
+    } writeToFile:ShuffleStatePath atomically:YES];
+}
+
+static MPMusicPlayerController *shufflePlayer(void) {
+    return [MPMusicPlayerController systemMusicPlayer];
+}
+
+static void captureShuffleState(void) {
+    MPMusicPlayerController *player =
+        shufflePlayer();
+
+    if (player == nil) {
+        return;
+    }
+
+    NSInteger rawMode =
+        (NSInteger)player.shuffleMode;
+    BOOL enabled =
+        rawMode == ShuffleModeSongs ||
+        rawMode == ShuffleModeAlbums;
+
+    writeShuffleState(enabled, rawMode);
+}
+
+static void applyRequestedShuffleState(void) {
+    NSDictionary *request = [NSDictionary
+        dictionaryWithContentsOfFile:
+            ShuffleRequestPath];
+
+    NSNumber *enabledValue =
+        request[@"enabled"];
+
+    if (enabledValue == nil) {
+        captureShuffleState();
+        return;
+    }
+
+    BOOL enabled =
+        enabledValue.boolValue;
+    MPMusicPlayerController *player =
+        shufflePlayer();
+
+    if (player == nil) {
+        return;
+    }
+
+    player.shuffleMode = enabled
+        ? MPMusicShuffleModeSongs
+        : MPMusicShuffleModeOff;
+
+    /* Publish immediately, then let polling verify the live iPad state. */
+    writeShuffleState(
+        enabled,
+        enabled
+            ? ShuffleModeSongs
+            : ShuffleModeOff
+    );
+
+    dispatch_after(
+        dispatch_time(
+            DISPATCH_TIME_NOW,
+            250 * NSEC_PER_MSEC
+        ),
+        dispatch_get_main_queue(),
+        ^{
+            captureShuffleState();
+        }
+    );
+}
+
+static void receivedShuffleNotification(
+    CFNotificationCenterRef center,
+    void *observer,
+    CFStringRef name,
+    const void *object,
+    CFDictionaryRef userInfo
+) {
+    dispatch_async(
+        dispatch_get_main_queue(),
+        ^{
+            applyRequestedShuffleState();
+        }
+    );
 }
 
 static NSString *const StatusPath =
@@ -567,6 +679,15 @@ static void receivedLockNotification(
         CFNotificationCenterAddObserver(
             CFNotificationCenterGetDarwinNotifyCenter(),
             NULL,
+            receivedShuffleNotification,
+            ShuffleNotification,
+            NULL,
+            CFNotificationSuspensionBehaviorDeliverImmediately
+        );
+
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            NULL,
             receivedWakeNotification,
             WakeNotification,
             NULL,
@@ -585,5 +706,21 @@ static void receivedLockNotification(
         writeStatus(
             @"Darwin observer installed"
         );
+
+
+        captureShuffleState();
+
+        [NSTimer
+            scheduledTimerWithTimeInterval:
+                1.0
+            repeats:
+                YES
+            block:
+                ^(
+                    NSTimer *timer
+                ) {
+                    captureShuffleState();
+                }
+        ];
     }
 }
