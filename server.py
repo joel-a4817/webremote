@@ -4494,7 +4494,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/airplay/connect":
             result = execute(
-                ["airplay-rt4817"]
+                ["airplay-connect-default"]
             )
 
             succeeded = (
@@ -4506,7 +4506,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": succeeded,
                     "message": (
-                        "Connected to rt4817"
+                        "Connected to default AirPlay device"
                         if succeeded
                         else ""
                     ),

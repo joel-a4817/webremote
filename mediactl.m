@@ -16,7 +16,7 @@
 #import "MusicLibraryCommands.h"
 #import "MusicPlaylistRemoval.h"
 #import "ipad_speaker_request.h"
-#import "rt4817_request.h"
+#import "airplay_route_template.h"
 
 /*
  * The Theos SDK does not ship xpc/xpc.h.
@@ -129,7 +129,7 @@ static void printUsage(void) {
         "  mediactl lock-device\n"
         "  mediactl wake-screen\n"
         "  mediactl home-screen\n"
-        "  mediactl airplay-rt4817\n"
+        "  mediactl airplay-connect-default\n"
         "  mediactl airplay-devices-json\n"
         "  mediactl airplay-show-picker\n"
         "  mediactl airplay-connect <uid> [name]\n"
@@ -1284,13 +1284,13 @@ AirPlayPreferencesDomain =
 
 
 static NSString *const
-OriginalAirPlayUID =
+InitialDefaultAirPlayUID =
     @"07b32858-19ad-447c-"
     @"898c-13d7f0ea07fe";
 
 
 static NSString *const
-OriginalAirPlayName =
+InitialDefaultAirPlayName =
     @"rt4817";
 
 
@@ -1340,7 +1340,7 @@ defaultAirPlayUID(void) {
         ];
 
     if (!validAirPlayIdentifier(uid)) {
-        return OriginalAirPlayUID;
+        return InitialDefaultAirPlayUID;
     }
 
     return uid;
@@ -1357,7 +1357,7 @@ defaultAirPlayName(void) {
         ];
 
     if (name.length == 0) {
-        return OriginalAirPlayName;
+        return InitialDefaultAirPlayName;
     }
 
     return name;
@@ -1863,9 +1863,9 @@ static NSData *routePayloadForUID(
     NSData *template =
         [NSData
             dataWithBytes:
-                kRt4817ModificationPayload
+                kAirPlayRouteTemplatePayload
             length:
-                kRt4817ModificationPayloadLength];
+                kAirPlayRouteTemplatePayloadLength];
 
     NSError *parseError = nil;
 
@@ -1905,7 +1905,7 @@ static NSData *routePayloadForUID(
     }
 
     NSData *oldUID =
-        [OriginalAirPlayUID
+        [InitialDefaultAirPlayUID
             dataUsingEncoding:
                 NSUTF8StringEncoding];
 
@@ -3390,7 +3390,7 @@ int main(int argc, char *argv[]) {
         if (
             [argument
                 isEqualToString:
-                    @"airplay-rt4817"]
+                    @"airplay-connect-default"]
         ) {
             return connectDefaultAirPlayDevice();
         }

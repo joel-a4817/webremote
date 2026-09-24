@@ -83,7 +83,7 @@
   /home/joel/webremote/MusicLibraryCommands.h \
   /home/joel/webremote/MusicPlaylistRemoval.h \
   /home/joel/webremote/ipad_speaker_request.h \
-  /home/joel/webremote/rt4817_request.h
+  /home/joel/webremote/airplay_route_template.h
 
 /opt/theos/Prefix.pch:
 
@@ -253,4 +253,4 @@
 
 /home/joel/webremote/ipad_speaker_request.h:
 
-/home/joel/webremote/rt4817_request.h:
+/home/joel/webremote/airplay_route_template.h:
