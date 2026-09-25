@@ -19,6 +19,7 @@ PORT = 8765
 WEBREMOTE_DIR = Path(__file__).resolve().parent
 SONOBUS_CTL = WEBREMOTE_DIR / "sonobus-settingsctl.py"
 ROUTING_STATE = WEBREMOTE_DIR / "routing-state.json"
+AIRPLAY_STATUS_FILE = WEBREMOTE_DIR / "airplay-status.json"
 SONOBUS_PROFILES = Path("/var/mobile/webremote/sonobus-profiles.json")
 SONOBUS_LOCK = threading.RLock()
 MUSIC_UPLOAD_DIRECTORY = Path('/var/mobile/Media/MusicUploads')
@@ -2507,11 +2508,14 @@ async function connectAirPlayDevice(
         }
       );
 
-    setStatus(
-      result.message
-      || "Connected to "
-      + device.name
-    );
+    if (result.state && sonobusUI.state) {
+      sonobusUI.state.airplayAvailable = true;
+      sonobusUI.state.airplayConnected = Boolean(result.state.connected);
+      sonobusUI.state.airplayName = result.state.name || device.name || "";
+      sonobusUI.state.airplayUID = result.state.uid || device.uid || "";
+      sonobusRender(sonobusUI.state);
+    }
+    setStatus(result.message || "Connected to " + device.name);
 
   } catch (error) {
     setStatus(
@@ -3139,29 +3143,34 @@ airPlayBackButton.addEventListener(
   }
 );
 
-connectAirPlayButton.addEventListener(
-  "click",
-  () => {
-    runSystemAction(
-      connectAirPlayButton,
-      "/api/airplay/connect",
-      "Connecting…",
-      "Connected to default AirPlay device"
-    );
+async function runAirPlayButton(button, endpoint, connected) {
+  if (button.disabled) return;
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = connected ? "Connecting…" : "Disconnecting…";
+  try {
+    const result = await readJSON(endpoint, {method: "POST"});
+    if (result.state && sonobusUI.state) {
+      sonobusUI.state.airplayAvailable = true;
+      sonobusUI.state.airplayConnected = Boolean(result.state.connected);
+      sonobusUI.state.airplayName = result.state.name || "";
+      sonobusUI.state.airplayUID = result.state.uid || "";
+      sonobusRender(sonobusUI.state);
+    }
+    setStatus(result.message || (connected ? "AirPlay connected" : "AirPlay disconnected"));
+  } catch (error) {
+    setStatus(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
   }
-);
-
-disconnectAirPlayButton.addEventListener(
-  "click",
-  () => {
-    runSystemAction(
-      disconnectAirPlayButton,
-      "/api/airplay/disconnect",
-      "Disconnecting…",
-      "AirPlay disconnected"
-    );
-  }
-);
+}
+connectAirPlayButton.addEventListener("click", () => {
+  runAirPlayButton(connectAirPlayButton, "/api/airplay/connect", true);
+});
+disconnectAirPlayButton.addEventListener("click", () => {
+  runAirPlayButton(disconnectAirPlayButton, "/api/airplay/disconnect", false);
+});
 restartMusicButton.addEventListener(
   "click",
   () => {
@@ -3996,10 +4005,27 @@ function scheduleIPadStatePoll(generation){
 
 const sonobusUI={state:null,busy:false};
 async function sonobusJSON(url,options){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),8000);try{const response=await fetch(url,{cache:'no-store',signal:controller.signal,...(options||{})});const data=await response.json();if(!response.ok||data.ok===false)throw new Error(data.error||'SonoBus request failed');return data}finally{clearTimeout(timer)}}
-function sonobusRender(state){sonobusUI.state=state;document.querySelectorAll('[data-sonobus-preset]').forEach(button=>button.classList.toggle('active',button.dataset.sonobusPreset===state.activePreset));const badge=document.querySelector('#sonobus-state-badge');if(badge){const sono=state.sonobusRunning?((state.group||'SonoBus')+' · Running'):'SonoBus stopped';const air=state.airplayAvailable?(state.airplayConnected?('AirPlay '+(state.airplayName||'connected')):'AirPlay off'):'AirPlay unknown';badge.textContent=sono+' · '+air}const list=document.querySelector('#sonobus-profile-list');if(list){list.innerHTML='';Object.entries(state.profiles||{}).forEach(([id,profile])=>{const row=document.createElement('div');row.className='sonobus-profile'+(id===state.selectedProfile?' selected':'');row.innerHTML='<div class="sonobus-profile-main"><div class="sonobus-profile-name"></div><div class="sonobus-profile-meta"></div></div><button data-use>Use</button><button data-delete>Delete</button>';row.querySelector('.sonobus-profile-name').textContent=profile.name||id;row.querySelector('.sonobus-profile-meta').textContent=(profile.username||'')+' · '+(profile.group||'');row.querySelector('[data-use]').onclick=()=>sonobusPost('/api/sonobus/profile/select',{id});row.querySelector('[data-delete]').onclick=()=>sonobusPost('/api/sonobus/profile/delete',{id});list.appendChild(row)})}}
+function sonobusRender(state){sonobusUI.state=state;document.querySelectorAll('[data-sonobus-preset]').forEach(button=>{const selected=button.dataset.sonobusPreset===state.activePreset;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected))});const badge=document.querySelector('#sonobus-state-badge');if(badge){const sono=state.sonobusRunning?((state.group||'SonoBus')+' · Running'):'SonoBus stopped';const air=state.airplayAvailable?(state.airplayConnected?('AirPlay '+(state.airplayName||'connected')):'AirPlay off'):'AirPlay unknown';badge.textContent=sono+' · '+air}const list=document.querySelector('#sonobus-profile-list');if(list){list.innerHTML='';Object.entries(state.profiles||{}).forEach(([id,profile])=>{const row=document.createElement('div');row.className='sonobus-profile'+(id===state.selectedProfile?' selected':'');row.innerHTML='<div class="sonobus-profile-main"><div class="sonobus-profile-name"></div><div class="sonobus-profile-meta"></div></div><button data-use>Use</button><button data-delete>Delete</button>';row.querySelector('.sonobus-profile-name').textContent=profile.name||id;row.querySelector('.sonobus-profile-meta').textContent=(profile.username||'')+' · '+(profile.group||'');row.querySelector('[data-use]').onclick=()=>sonobusPost('/api/sonobus/profile/select',{id});row.querySelector('[data-delete]').onclick=()=>sonobusPost('/api/sonobus/profile/delete',{id});list.appendChild(row)})}}
 async function sonobusRefresh(){if(sonobusUI.busy||document.hidden)return;try{sonobusRender(await sonobusJSON('/api/sonobus/state'))}catch(error){setStatus(error.name==='AbortError'?'Route status timed out':error.message)}}
 async function sonobusPost(url,payload){if(sonobusUI.busy)return;sonobusUI.busy=true;try{const data=await sonobusJSON(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})});if(data.state)sonobusRender(data.state);setStatus(data.message||'Routing updated')}catch(error){setStatus(error.message)}finally{sonobusUI.busy=false;sonobusRefresh()}}
-document.querySelectorAll('[data-sonobus-preset]').forEach(button=>button.onclick=()=>sonobusPost('/api/sonobus/preset',{preset:button.dataset.sonobusPreset}));
+document.querySelectorAll('[data-sonobus-preset]').forEach(button=>button.onclick=async()=>{
+  if(sonobusUI.busy)return;
+  const preset=button.dataset.sonobusPreset;
+  document.querySelectorAll('[data-sonobus-preset]').forEach(item=>{
+    item.classList.toggle('active',item===button);
+    item.disabled=true;
+  });
+  button.setAttribute('aria-pressed','true');
+  setStatus('Applying '+button.textContent.trim()+' destination…');
+  try{
+    await sonobusPost('/api/sonobus/preset',{preset});
+  }finally{
+    document.querySelectorAll('[data-sonobus-preset]').forEach(item=>{
+      item.disabled=false;
+      item.setAttribute('aria-pressed',String(item.classList.contains('active')));
+    });
+  }
+});
 const restartSonoBusButton=document.querySelector('#restart-sonobus');
 async function restartSonoBusWithFeedback(){
   if(!restartSonoBusButton||sonobusUI.busy)return;
@@ -4543,6 +4569,32 @@ def _atomic_json(path, payload):
     os.replace(temporary, path)
 
 
+def saved_airplay_status():
+    try:
+        payload = json.loads(AIRPLAY_STATUS_FILE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {"connected": False, "name": "", "uid": "", "source": "route-command"}
+    return payload if isinstance(payload, dict) else {"connected": False, "name": "", "uid": "", "source": "route-command"}
+
+def save_airplay_status(payload, connected):
+    state = {
+        "connected": bool(connected),
+        "name": str(payload.get("name") or "") if connected else "",
+        "uid": str(payload.get("uid") or "") if connected else "",
+        "source": "route-command",
+    }
+    _atomic_json(AIRPLAY_STATUS_FILE, state)
+    return state
+
+def airplay_state_from_result(result, connected):
+    try:
+        payload = json.loads(result.stdout)
+    except (TypeError, json.JSONDecodeError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    return save_airplay_status(payload, connected)
+
 def sonobus_profiles():
     try:
         payload = json.loads(SONOBUS_PROFILES.read_text(encoding="utf-8"))
@@ -4608,18 +4660,13 @@ def sonobus_state():
         payload["airplayError"] = str(error)
 
     saved_preset = routing_state().get("activePreset", "")
-    active_preset = ""
-    preset = SONOBUS_PRESETS.get(saved_preset)
-    if preset is not None:
-        receive_matches = bool(preset["receive"]) == running
-        airplay_matches = (
-            airplay_connected is None
-            or bool(preset["airplay"]) == airplay_connected
-        )
-        if receive_matches and airplay_matches:
-            active_preset = saved_preset
-    payload["activePreset"] = active_preset
+    payload["activePreset"] = saved_preset if saved_preset in SONOBUS_PRESETS else ""
     payload["savedPreset"] = saved_preset
+    saved_airplay = saved_airplay_status()
+    payload["airplayAvailable"] = True
+    payload["airplayConnected"] = bool(saved_airplay.get("connected", False))
+    payload["airplayName"] = str(saved_airplay.get("name") or "")
+    payload["airplayUID"] = str(saved_airplay.get("uid") or "")
     return payload
 
 
@@ -4832,6 +4879,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
 
+        if path == "/api/airplay/state":
+            payload = saved_airplay_status()
+            payload["ok"] = True
+            self.send_json(200, payload)
+            return
         if path == "/api/sonobus/state":
             try:
                 with SONOBUS_LOCK:
@@ -5074,6 +5126,7 @@ class Handler(BaseHTTPRequestHandler):
                         result = execute(command)
                         if result.returncode != 0:
                             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "AirPlay routing failed")
+                        airplay_state_from_result(result, bool(preset["airplay"]))
                         save_routing_state(preset_name)
                         message = "Routing preset applied"
                     else:
@@ -5912,11 +5965,13 @@ class Handler(BaseHTTPRequestHandler):
             succeeded = (
                 result.returncode == 0
             )
+            state = airplay_state_from_result(result, True) if succeeded else None
 
             self.send_json(
                 200 if succeeded else 500,
                 {
                     "ok": succeeded,
+                    "state": state,
                     "message": (
                         "Connected to " + name
                         if succeeded
@@ -6013,10 +6068,12 @@ class Handler(BaseHTTPRequestHandler):
             succeeded = (
                 result.returncode == 0
             )
+            state = airplay_state_from_result(result, False) if succeeded else None
             self.send_json(
                 200 if succeeded else 500,
                 {
                     "ok": succeeded,
+                    "state": state,
                     "message": (
                         "AirPlay disconnected"
                         if succeeded
@@ -6043,11 +6100,13 @@ class Handler(BaseHTTPRequestHandler):
             succeeded = (
                 result.returncode == 0
             )
+            state = airplay_state_from_result(result, True) if succeeded else None
 
             self.send_json(
                 200 if succeeded else 500,
                 {
                     "ok": succeeded,
+                    "state": state,
                     "message": (
                         "Connected to default AirPlay device"
                         if succeeded

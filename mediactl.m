@@ -1450,41 +1450,67 @@ defaultAirPlayName(void) {
 }
 
 
+static NSString *airPlayDeviceString(id device, NSString *selectorName) {
+    SEL selector = NSSelectorFromString(selectorName);
+    if (device == nil || ![device respondsToSelector:selector]) return @"";
+    id value = ((id (*)(id, SEL))objc_msgSend)(device, selector);
+    return [value isKindOfClass:[NSString class]] ? value : @"";
+}
+static BOOL airPlayDeviceIsLocal(id device) {
+    SEL selector = NSSelectorFromString(@"isLocalDevice");
+    return device != nil && [device respondsToSelector:selector]
+        ? ((BOOL (*)(id, SEL))objc_msgSend)(device, selector) : NO;
+}
 static int printAirPlayStateJSON(void) {
-    AVAudioSessionRouteDescription *route =
-        AVAudioSession.sharedInstance.currentRoute;
-    NSMutableArray *outputs = [NSMutableArray array];
-    BOOL connected = NO;
-    NSString *activeName = @"";
-    NSString *activeUID = @"";
-
-    for (AVAudioSessionPortDescription *output in route.outputs) {
-        NSString *type = output.portType ?: @"";
-        NSString *name = output.portName ?: @"";
-        NSString *uid = output.UID ?: @"";
-        BOOL isAirPlay = [type isEqualToString:AVAudioSessionPortAirPlay];
-        if (isAirPlay) {
-            connected = YES;
-            activeName = name;
-            activeUID = uid;
-        }
-        [outputs addObject:@{
-            @"name": name,
-            @"uid": uid,
-            @"type": type,
-            @"airplay": @(isAirPlay)
-        }];
+    void *framework = dlopen(
+        "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",
+        RTLD_LAZY | RTLD_LOCAL
+    );
+    if (framework == NULL) {
+        fprintf(stderr, "Could not load MediaRemote.framework: %s\n", dlerror());
+        return 1;
     }
-
+    Class contextClass = NSClassFromString(@"MRAVOutputContext");
+    SEL sharedSelector = NSSelectorFromString(@"sharedAudioPresentationContext");
+    SEL devicesSelector = NSSelectorFromString(@"outputDevices");
+    if (contextClass == Nil || ![contextClass respondsToSelector:sharedSelector]) {
+        fprintf(stderr, "MRAVOutputContext is unavailable\n");
+        dlclose(framework);
+        return 1;
+    }
+    id context = ((id (*)(id, SEL))objc_msgSend)(contextClass, sharedSelector);
+    if (context == nil || ![context respondsToSelector:devicesSelector]) {
+        fprintf(stderr, "Audio presentation output context is unavailable\n");
+        dlclose(framework);
+        return 1;
+    }
+    id raw = ((id (*)(id, SEL))objc_msgSend)(context, devicesSelector);
+    NSArray *devices = [raw isKindOfClass:[NSArray class]] ? raw : @[];
+    NSMutableArray *outputs = [NSMutableArray array];
+    NSMutableArray *names = [NSMutableArray array];
+    NSMutableArray *uids = [NSMutableArray array];
+    for (id device in devices) {
+        NSString *name = airPlayDeviceString(device, @"localizedName");
+        if (name.length == 0) name = airPlayDeviceString(device, @"name");
+        NSString *uid = airPlayDeviceString(device, @"uid");
+        BOOL local = airPlayDeviceIsLocal(device);
+        [outputs addObject:@{@"name": name ?: @"", @"uid": uid ?: @"", @"local": @(local)}];
+        if (!local && uid.length > 0) {
+            [names addObject:name.length > 0 ? name : @"AirPlay"];
+            [uids addObject:uid];
+        }
+    }
+    BOOL connected = uids.count > 0;
     printJSONObject(@{
         @"connected": @(connected),
-        @"name": activeName,
-        @"uid": activeUID,
-        @"outputs": outputs
+        @"name": connected ? [names componentsJoinedByString:@" + "] : @"",
+        @"uid": connected ? [uids componentsJoinedByString:@","] : @"",
+        @"outputs": outputs,
+        @"source": @"MRAVOutputContext.sharedAudioPresentationContext"
     });
+    dlclose(framework);
     return 0;
 }
-
 
 static int printAirPlayDevicesJSON(void) {
     NSUserDefaults *preferences =
