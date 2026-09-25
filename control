@@ -1,6 +1,6 @@
 Package: com.joel.mediactl
 Name: mediactl
-Version: 3.3.1
+Version: 4.0
 Architecture: iphoneos-arm64
 Description: Command-line controller for the active iOS media session
 Maintainer: Joel

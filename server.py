@@ -19,7 +19,6 @@ PORT = 8765
 WEBREMOTE_DIR = Path(__file__).resolve().parent
 SONOBUS_CTL = WEBREMOTE_DIR / "sonobus-settingsctl.py"
 ROUTING_STATE = WEBREMOTE_DIR / "routing-state.json"
-AIRPLAY_STATUS_FILE = WEBREMOTE_DIR / "airplay-status.json"
 SONOBUS_PROFILES = Path("/var/mobile/webremote/sonobus-profiles.json")
 SONOBUS_LOCK = threading.RLock()
 MUSIC_UPLOAD_DIRECTORY = Path('/var/mobile/Media/MusicUploads')
@@ -1228,6 +1227,30 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
     </div>
 
 
+    <section id="sonobus-home" class="sonobus-card">
+      <div class="sonobus-head"><div><div class="sonobus-kicker">SonoBus & Home Routing</div><h2>Audio destinations</h2></div><span id="sonobus-state-badge">Loading</span></div>
+      <div class="sonobus-section-label">Playing from iPad</div>
+      <div class="sonobus-grid four">
+        <button data-sonobus-preset="ipad-local">iPad</button><button data-sonobus-preset="ipad-laptop">Laptop</button><button data-sonobus-preset="ipad-both">Both</button><button data-sonobus-preset="ipad-external">External</button>
+      </div>
+      <div class="sonobus-section-label">Playing from laptop</div>
+      <div class="sonobus-grid four">
+        <button data-sonobus-preset="laptop-ipad">iPad</button><button data-sonobus-preset="laptop-local">Laptop</button><button data-sonobus-preset="laptop-both">Both</button><button data-sonobus-preset="laptop-external">External</button>
+      </div>
+      <div class="sonobus-grid sonobus-manage">
+        <button id="sonobus-groups-open">Group Profiles</button>
+      </div>
+    </section>
+    <section id="sonobus-groups" class="sonobus-card hidden">
+      <div class="sonobus-head"><h2>Group Profiles</h2><button class="sonobus-close" data-sonobus-close>Done</button></div>
+      <div id="sonobus-profile-list"></div>
+      <div class="sonobus-form">
+        <input id="sonobus-profile-name" placeholder="Profile name"><input id="sonobus-username" placeholder="Username" value="iPad4817">
+        <input id="sonobus-group" placeholder="Group name"><input id="sonobus-password" type="password" autocomplete="new-password" placeholder="Password, if required">
+        <button id="sonobus-profile-save">Save profile</button>
+      </div>
+    </section>
+
   </section>
 
   <section
@@ -1401,29 +1424,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
   </section>
 
   
-<section id="sonobus-home" class="sonobus-card">
-  <div class="sonobus-head"><div><div class="sonobus-kicker">SonoBus & Home Routing</div><h2>Audio destinations</h2></div><span id="sonobus-state-badge">Loading</span></div>
-  <div class="sonobus-section-label">Playing from iPad</div>
-  <div class="sonobus-grid four">
-    <button data-sonobus-preset="ipad-local">iPad</button><button data-sonobus-preset="ipad-laptop">Laptop</button><button data-sonobus-preset="ipad-both">Both</button><button data-sonobus-preset="ipad-external">External</button>
-  </div>
-  <div class="sonobus-section-label">Playing from laptop</div>
-  <div class="sonobus-grid four">
-    <button data-sonobus-preset="laptop-ipad">iPad</button><button data-sonobus-preset="laptop-local">Laptop</button><button data-sonobus-preset="laptop-both">Both</button><button data-sonobus-preset="laptop-external">External</button>
-  </div>
-  <div class="sonobus-grid sonobus-manage">
-    <button id="sonobus-groups-open">Group Profiles</button>
-  </div>
-</section>
-<section id="sonobus-groups" class="sonobus-card hidden">
-  <div class="sonobus-head"><h2>Group Profiles</h2><button class="sonobus-close" data-sonobus-close>Done</button></div>
-  <div id="sonobus-profile-list"></div>
-  <div class="sonobus-form">
-    <input id="sonobus-profile-name" placeholder="Profile name"><input id="sonobus-username" placeholder="Username" value="iPad4817">
-    <input id="sonobus-group" placeholder="Group name"><input id="sonobus-password" type="password" autocomplete="new-password" placeholder="Password, if required">
-    <button id="sonobus-profile-save">Save profile</button>
-  </div>
-</section>
 <div id="status"></div>
 </main>
 
@@ -2508,14 +2508,11 @@ async function connectAirPlayDevice(
         }
       );
 
-    if (result.state && sonobusUI.state) {
-      sonobusUI.state.airplayAvailable = true;
-      sonobusUI.state.airplayConnected = Boolean(result.state.connected);
-      sonobusUI.state.airplayName = result.state.name || device.name || "";
-      sonobusUI.state.airplayUID = result.state.uid || device.uid || "";
-      sonobusRender(sonobusUI.state);
-    }
-    setStatus(result.message || "Connected to " + device.name);
+    setStatus(
+      result.message
+      || "Connected to "
+      + device.name
+    );
 
   } catch (error) {
     setStatus(
@@ -3143,34 +3140,29 @@ airPlayBackButton.addEventListener(
   }
 );
 
-async function runAirPlayButton(button, endpoint, connected) {
-  if (button.disabled) return;
-  const label = button.textContent;
-  button.disabled = true;
-  button.textContent = connected ? "Connecting…" : "Disconnecting…";
-  try {
-    const result = await readJSON(endpoint, {method: "POST"});
-    if (result.state && sonobusUI.state) {
-      sonobusUI.state.airplayAvailable = true;
-      sonobusUI.state.airplayConnected = Boolean(result.state.connected);
-      sonobusUI.state.airplayName = result.state.name || "";
-      sonobusUI.state.airplayUID = result.state.uid || "";
-      sonobusRender(sonobusUI.state);
-    }
-    setStatus(result.message || (connected ? "AirPlay connected" : "AirPlay disconnected"));
-  } catch (error) {
-    setStatus(error.message);
-  } finally {
-    button.disabled = false;
-    button.textContent = label;
+connectAirPlayButton.addEventListener(
+  "click",
+  () => {
+    runSystemAction(
+      connectAirPlayButton,
+      "/api/airplay/connect",
+      "Connecting…",
+      "Connected to default AirPlay device"
+    );
   }
-}
-connectAirPlayButton.addEventListener("click", () => {
-  runAirPlayButton(connectAirPlayButton, "/api/airplay/connect", true);
-});
-disconnectAirPlayButton.addEventListener("click", () => {
-  runAirPlayButton(disconnectAirPlayButton, "/api/airplay/disconnect", false);
-});
+);
+
+disconnectAirPlayButton.addEventListener(
+  "click",
+  () => {
+    runSystemAction(
+      disconnectAirPlayButton,
+      "/api/airplay/disconnect",
+      "Disconnecting…",
+      "AirPlay disconnected"
+    );
+  }
+);
 restartMusicButton.addEventListener(
   "click",
   () => {
@@ -4569,32 +4561,6 @@ def _atomic_json(path, payload):
     os.replace(temporary, path)
 
 
-def saved_airplay_status():
-    try:
-        payload = json.loads(AIRPLAY_STATUS_FILE.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, json.JSONDecodeError):
-        return {"connected": False, "name": "", "uid": "", "source": "route-command"}
-    return payload if isinstance(payload, dict) else {"connected": False, "name": "", "uid": "", "source": "route-command"}
-
-def save_airplay_status(payload, connected):
-    state = {
-        "connected": bool(connected),
-        "name": str(payload.get("name") or "") if connected else "",
-        "uid": str(payload.get("uid") or "") if connected else "",
-        "source": "route-command",
-    }
-    _atomic_json(AIRPLAY_STATUS_FILE, state)
-    return state
-
-def airplay_state_from_result(result, connected):
-    try:
-        payload = json.loads(result.stdout)
-    except (TypeError, json.JSONDecodeError):
-        payload = {}
-    if not isinstance(payload, dict):
-        payload = {}
-    return save_airplay_status(payload, connected)
-
 def sonobus_profiles():
     try:
         payload = json.loads(SONOBUS_PROFILES.read_text(encoding="utf-8"))
@@ -4644,29 +4610,27 @@ def sonobus_state():
     running = sonobus_running()
     payload["sonobusRunning"] = running
 
-    try:
-        airplay = mediactl_object(["airplay-state-json"], timeout=5)
-        airplay_connected = bool(airplay.get("connected", False))
-        payload["airplayAvailable"] = True
-        payload["airplayConnected"] = airplay_connected
-        payload["airplayName"] = str(airplay.get("name") or "")
-        payload["airplayUID"] = str(airplay.get("uid") or "")
-    except RuntimeError as error:
-        airplay_connected = None
-        payload["airplayAvailable"] = False
-        payload["airplayConnected"] = None
-        payload["airplayName"] = ""
-        payload["airplayUID"] = ""
-        payload["airplayError"] = str(error)
-
     saved_preset = routing_state().get("activePreset", "")
-    payload["activePreset"] = saved_preset if saved_preset in SONOBUS_PRESETS else ""
-    payload["savedPreset"] = saved_preset
-    saved_airplay = saved_airplay_status()
+    active_preset = (
+        saved_preset if saved_preset in SONOBUS_PRESETS else ""
+    )
+    # The badge reflects the successfully applied destination command.
+    # The live state reader reports Speaker from this server process even
+    # while Music is connected, so it must not overwrite the route result.
+    airplay_connected = bool(
+        active_preset
+        and SONOBUS_PRESETS[active_preset]["airplay"]
+    )
     payload["airplayAvailable"] = True
-    payload["airplayConnected"] = bool(saved_airplay.get("connected", False))
-    payload["airplayName"] = str(saved_airplay.get("name") or "")
-    payload["airplayUID"] = str(saved_airplay.get("uid") or "")
+    payload["airplayConnected"] = airplay_connected
+    payload["airplayName"] = "rt4817" if airplay_connected else ""
+    payload["airplayUID"] = (
+        "07b32858-19ad-447c-898c-13d7f0ea07fe"
+        if airplay_connected
+        else ""
+    )
+    payload["activePreset"] = active_preset
+    payload["savedPreset"] = saved_preset
     return payload
 
 
@@ -4879,11 +4843,6 @@ class Handler(BaseHTTPRequestHandler):
             return
 
 
-        if path == "/api/airplay/state":
-            payload = saved_airplay_status()
-            payload["ok"] = True
-            self.send_json(200, payload)
-            return
         if path == "/api/sonobus/state":
             try:
                 with SONOBUS_LOCK:
@@ -5122,11 +5081,27 @@ class Handler(BaseHTTPRequestHandler):
                             apply_sonobus(profile, {"sendMuted": True, "receiveMuted": False, "inputMuted": True, "monitorSolo": False}, password=str(profile.get("password") or ""))
                         elif not preset["receive"] and running:
                             stop_sonobus()
-                        command = ["airplay-connect-default"] if preset["airplay"] else ["airplay-disconnect"]
-                        result = execute(command)
+                        if preset["airplay"]:
+                            # All iPad-source presets use the same proven
+                            # standalone AirPlay flow: clear the current route,
+                            # then connect the saved default receiver.
+                            disconnect_result = execute(["airplay-disconnect"])
+                            if disconnect_result.returncode != 0:
+                                raise RuntimeError(
+                                    disconnect_result.stderr.strip()
+                                    or disconnect_result.stdout.strip()
+                                    or "AirPlay disconnect failed"
+                                )
+                            time.sleep(0.35)
+                            result = execute(["airplay-connect-default"])
+                        else:
+                            result = execute(["airplay-disconnect"])
                         if result.returncode != 0:
-                            raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "AirPlay routing failed")
-                        airplay_state_from_result(result, bool(preset["airplay"]))
+                            raise RuntimeError(
+                                result.stderr.strip()
+                                or result.stdout.strip()
+                                or "AirPlay routing failed"
+                            )
                         save_routing_state(preset_name)
                         message = "Routing preset applied"
                     else:
@@ -5965,13 +5940,11 @@ class Handler(BaseHTTPRequestHandler):
             succeeded = (
                 result.returncode == 0
             )
-            state = airplay_state_from_result(result, True) if succeeded else None
 
             self.send_json(
                 200 if succeeded else 500,
                 {
                     "ok": succeeded,
-                    "state": state,
                     "message": (
                         "Connected to " + name
                         if succeeded
@@ -6068,12 +6041,10 @@ class Handler(BaseHTTPRequestHandler):
             succeeded = (
                 result.returncode == 0
             )
-            state = airplay_state_from_result(result, False) if succeeded else None
             self.send_json(
                 200 if succeeded else 500,
                 {
                     "ok": succeeded,
-                    "state": state,
                     "message": (
                         "AirPlay disconnected"
                         if succeeded
@@ -6100,13 +6071,11 @@ class Handler(BaseHTTPRequestHandler):
             succeeded = (
                 result.returncode == 0
             )
-            state = airplay_state_from_result(result, True) if succeeded else None
 
             self.send_json(
                 200 if succeeded else 500,
                 {
                     "ok": succeeded,
-                    "state": state,
                     "message": (
                         "Connected to default AirPlay device"
                         if succeeded
