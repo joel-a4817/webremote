@@ -16,6 +16,11 @@ from urllib.parse import parse_qs, urlparse
 
 MEDIACTL = "/var/jb/usr/local/bin/mediactl"
 PORT = 8765
+WEBREMOTE_DIR = Path(__file__).resolve().parent
+SONOBUS_CTL = WEBREMOTE_DIR / "sonobus-settingsctl.py"
+ROUTING_STATE = WEBREMOTE_DIR / "routing-state.json"
+SONOBUS_PROFILES = Path("/var/mobile/webremote/sonobus-profiles.json")
+SONOBUS_LOCK = threading.RLock()
 MUSIC_UPLOAD_DIRECTORY = Path('/var/mobile/Media/MusicUploads')
 MUSIC_IMPORT_REQUEST = Path('/var/mobile/MediaCtlMusicImport-request.plist')
 MUSIC_IMPORT_RESPONSE = Path('/var/mobile/MediaCtlMusicImport-response.plist')
@@ -1000,6 +1005,27 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
   font-weight: 750;
 }
 
+
+.sonobus-card{margin:18px 0;padding:18px;border:1px solid #ffffff24;border-radius:24px;background:linear-gradient(145deg,#ffffff18,#ffffff0a);box-shadow:inset 0 1px #ffffff24,0 18px 45px #0004}.sonobus-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.sonobus-head h2{margin:3px 0 12px;font-size:21px}.sonobus-kicker,.sonobus-section-label{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#bdb7cb}.sonobus-section-label{margin:17px 2px 8px}.sonobus-grid{display:grid;gap:10px}.sonobus-grid.three{grid-template-columns:repeat(3,1fr)}.sonobus-grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}.sonobus-grid.two{grid-template-columns:repeat(2,1fr)}.sonobus-grid button,.sonobus-form button,.sonobus-close{min-height:50px;border-radius:16px;background:#ffffff18;border:1px solid #ffffff14;color:#fff;font-weight:750}.sonobus-grid button.active{background:linear-gradient(135deg,#3f8eff,#865dff);box-shadow:0 9px 24px #503dd05c}.sonobus-manage{margin-top:18px}.sonobus-note{color:#b9b4c5;font-size:12px;margin:12px 2px 0}.sonobus-form{display:grid;gap:10px;margin-top:12px}.sonobus-form input{width:100%;min-height:48px;border:1px solid #ffffff1f;border-radius:14px;padding:0 14px;background:#0e1018;color:#fff}.sonobus-profile{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid #ffffff12}.sonobus-profile-main{flex:1}.sonobus-profile-name{font-weight:800}.sonobus-profile-meta{font-size:12px;color:#b9b4c5}.sonobus-profile button{min-height:38px;padding:0 12px;border-radius:12px;background:#ffffff17;color:#fff}.sonobus-profile.selected{color:#a9d4ff}#sonobus-state-badge{padding:7px 10px;border-radius:999px;background:#ffffff16;font-size:12px;color:#c9c5d2}
+
+#restart-sonobus.is-restarting {
+  position: relative;
+  color: transparent;
+  pointer-events: none;
+}
+#restart-sonobus.is-restarting::after {
+  content: "Restarting SonoBus…";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+#sonobus-state-badge.is-restarting {
+  border-color: rgba(255, 190, 92, 0.52);
+  background: rgba(255, 159, 10, 0.16);
+  color: #ffd39a;
+}
 </style>
 </head>
 
@@ -1190,6 +1216,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
       >
         Disconnect AirPlay
       </button>
+      <button id="restart-sonobus" class="system-button" type="button">Restart SonoBus</button>
       <button
         id="home-device"
         class="system-button"
@@ -1372,7 +1399,31 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
     </button>
   </section>
 
-  <div id="status"></div>
+  
+<section id="sonobus-home" class="sonobus-card">
+  <div class="sonobus-head"><div><div class="sonobus-kicker">SonoBus & Home Routing</div><h2>Audio destinations</h2></div><span id="sonobus-state-badge">Loading</span></div>
+  <div class="sonobus-section-label">Playing from iPad</div>
+  <div class="sonobus-grid four">
+    <button data-sonobus-preset="ipad-local">iPad</button><button data-sonobus-preset="ipad-laptop">Laptop</button><button data-sonobus-preset="ipad-both">Both</button><button data-sonobus-preset="ipad-external">External</button>
+  </div>
+  <div class="sonobus-section-label">Playing from laptop</div>
+  <div class="sonobus-grid four">
+    <button data-sonobus-preset="laptop-ipad">iPad</button><button data-sonobus-preset="laptop-local">Laptop</button><button data-sonobus-preset="laptop-both">Both</button><button data-sonobus-preset="laptop-external">External</button>
+  </div>
+  <div class="sonobus-grid sonobus-manage">
+    <button id="sonobus-groups-open">Group Profiles</button>
+  </div>
+</section>
+<section id="sonobus-groups" class="sonobus-card hidden">
+  <div class="sonobus-head"><h2>Group Profiles</h2><button class="sonobus-close" data-sonobus-close>Done</button></div>
+  <div id="sonobus-profile-list"></div>
+  <div class="sonobus-form">
+    <input id="sonobus-profile-name" placeholder="Profile name"><input id="sonobus-username" placeholder="Username" value="iPad4817">
+    <input id="sonobus-group" placeholder="Group name"><input id="sonobus-password" type="password" autocomplete="new-password" placeholder="Password, if required">
+    <button id="sonobus-profile-save">Save profile</button>
+  </div>
+</section>
+<div id="status"></div>
 </main>
 
 <script>
@@ -3930,33 +3981,69 @@ document.querySelector(
   }
 );
 
-loadPlaylists();
-updateNowPlaying();
-updateSystemNowPlaying();
-loadVolumeState();
-loadRepeatMode();
-loadShuffleMode();
+let ipadStateTimer = null;
+let routeStateTimer = null;
+let pageRefreshGeneration = 0;
+async function refreshIPadState(){
+  if(document.hidden)return;
+  await Promise.allSettled([updateNowPlaying(),updateSystemNowPlaying(),loadVolumeState(),loadRepeatMode(),loadShuffleMode()]);
+}
+function scheduleIPadStatePoll(generation){
+  clearTimeout(ipadStateTimer);
+  if(document.hidden||generation!==pageRefreshGeneration)return;
+  ipadStateTimer=setTimeout(async()=>{await refreshIPadState();scheduleIPadStatePoll(generation)},1500);
+}
 
-setInterval(
-  updateNowPlaying,
-  2000
-);
-setInterval(
-  updateSystemNowPlaying,
-  2000
-);
-setInterval(
-  loadRepeatMode,
-  2000
-);
-setInterval(
-  loadShuffleMode,
-  2000
-);
-setInterval(
-  loadVolumeState,
-  500
-);
+const sonobusUI={state:null,busy:false};
+async function sonobusJSON(url,options){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),8000);try{const response=await fetch(url,{cache:'no-store',signal:controller.signal,...(options||{})});const data=await response.json();if(!response.ok||data.ok===false)throw new Error(data.error||'SonoBus request failed');return data}finally{clearTimeout(timer)}}
+function sonobusRender(state){sonobusUI.state=state;document.querySelectorAll('[data-sonobus-preset]').forEach(button=>button.classList.toggle('active',button.dataset.sonobusPreset===state.activePreset));const badge=document.querySelector('#sonobus-state-badge');if(badge){const sono=state.sonobusRunning?((state.group||'SonoBus')+' · Running'):'SonoBus stopped';const air=state.airplayAvailable?(state.airplayConnected?('AirPlay '+(state.airplayName||'connected')):'AirPlay off'):'AirPlay unknown';badge.textContent=sono+' · '+air}const list=document.querySelector('#sonobus-profile-list');if(list){list.innerHTML='';Object.entries(state.profiles||{}).forEach(([id,profile])=>{const row=document.createElement('div');row.className='sonobus-profile'+(id===state.selectedProfile?' selected':'');row.innerHTML='<div class="sonobus-profile-main"><div class="sonobus-profile-name"></div><div class="sonobus-profile-meta"></div></div><button data-use>Use</button><button data-delete>Delete</button>';row.querySelector('.sonobus-profile-name').textContent=profile.name||id;row.querySelector('.sonobus-profile-meta').textContent=(profile.username||'')+' · '+(profile.group||'');row.querySelector('[data-use]').onclick=()=>sonobusPost('/api/sonobus/profile/select',{id});row.querySelector('[data-delete]').onclick=()=>sonobusPost('/api/sonobus/profile/delete',{id});list.appendChild(row)})}}
+async function sonobusRefresh(){if(sonobusUI.busy||document.hidden)return;try{sonobusRender(await sonobusJSON('/api/sonobus/state'))}catch(error){setStatus(error.name==='AbortError'?'Route status timed out':error.message)}}
+async function sonobusPost(url,payload){if(sonobusUI.busy)return;sonobusUI.busy=true;try{const data=await sonobusJSON(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})});if(data.state)sonobusRender(data.state);setStatus(data.message||'Routing updated')}catch(error){setStatus(error.message)}finally{sonobusUI.busy=false;sonobusRefresh()}}
+document.querySelectorAll('[data-sonobus-preset]').forEach(button=>button.onclick=()=>sonobusPost('/api/sonobus/preset',{preset:button.dataset.sonobusPreset}));
+const restartSonoBusButton=document.querySelector('#restart-sonobus');
+async function restartSonoBusWithFeedback(){
+  if(!restartSonoBusButton||sonobusUI.busy)return;
+  const badge=document.querySelector('#sonobus-state-badge');
+  const previousBadge=badge?badge.textContent:'';
+  sonobusUI.busy=true;
+  restartSonoBusButton.disabled=true;
+  restartSonoBusButton.classList.add('is-restarting');
+  restartSonoBusButton.setAttribute('aria-busy','true');
+  if(badge){badge.textContent='Restarting SonoBus…';badge.classList.add('is-restarting')}
+  setStatus('Restarting SonoBus…');
+  try{
+    const data=await sonobusJSON('/api/sonobus/restart',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    let state=null;
+    for(let attempt=0;attempt<10;attempt+=1){
+      await new Promise(resolve=>setTimeout(resolve,500));
+      try{
+        state=await sonobusJSON('/api/sonobus/state');
+        if(state.sonobusRunning)break;
+      }catch(_error){}
+    }
+    if(state)sonobusRender(state);
+    setStatus(state&&state.sonobusRunning?'SonoBus restarted':'SonoBus restart sent');
+  }catch(error){
+    if(badge)badge.textContent=previousBadge||'SonoBus stopped';
+    setStatus(error.message);
+  }finally{
+    restartSonoBusButton.disabled=false;
+    restartSonoBusButton.classList.remove('is-restarting');
+    restartSonoBusButton.removeAttribute('aria-busy');
+    if(badge)badge.classList.remove('is-restarting');
+    sonobusUI.busy=false;
+    sonobusRefresh();
+  }
+}
+if(restartSonoBusButton)restartSonoBusButton.addEventListener('click',restartSonoBusWithFeedback);
+document.querySelector('#sonobus-groups-open').onclick=()=>document.querySelector('#sonobus-groups').classList.remove('hidden');
+document.querySelectorAll('[data-sonobus-close]').forEach(button=>button.onclick=()=>button.closest('section').classList.add('hidden'));
+document.querySelector('#sonobus-profile-save').onclick=()=>sonobusPost('/api/sonobus/profile/save',{name:document.querySelector('#sonobus-profile-name').value.trim(),username:document.querySelector('#sonobus-username').value.trim(),group:document.querySelector('#sonobus-group').value.trim(),password:document.querySelector('#sonobus-password').value});
+async function refreshVisiblePage(){if(document.hidden)return;await Promise.allSettled([refreshIPadState(),sonobusRefresh()])}
+function scheduleRouteStatePoll(generation){clearTimeout(routeStateTimer);if(document.hidden||generation!==pageRefreshGeneration)return;routeStateTimer=setTimeout(async()=>{await sonobusRefresh();scheduleRouteStatePoll(generation)},2500)}
+function startVisiblePolling(){pageRefreshGeneration+=1;const generation=pageRefreshGeneration;refreshVisiblePage();scheduleIPadStatePoll(generation);scheduleRouteStatePoll(generation)}
+document.addEventListener('visibilitychange',()=>{if(document.hidden){pageRefreshGeneration+=1;clearTimeout(ipadStateTimer);clearTimeout(routeStateTimer);return}loadPlaylists();startVisiblePolling()});
+loadPlaylists();startVisiblePolling();
 </script>
 </body>
 </html>
@@ -4449,6 +4536,185 @@ def remove_song_from_library(identifier):
     return payload
 
 
+def _atomic_json(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def sonobus_profiles():
+    try:
+        payload = json.loads(SONOBUS_PROFILES.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        payload = {"selected": "default", "profiles": {"default": {"name": "Default", "username": "iPad4817", "group": "rt4817-camilladsp", "passwordRequired": False}}}
+    if not isinstance(payload, dict) or not isinstance(payload.get("profiles"), dict):
+        raise RuntimeError("Invalid SonoBus profile store")
+    return payload
+
+
+def run_sonobus(args, timeout=12):
+    if not SONOBUS_CTL.is_file():
+        raise RuntimeError("SonoBus controller is not installed")
+    result = subprocess.run([str(Path(os.sys.executable)), str(SONOBUS_CTL), *args], capture_output=True, text=True, timeout=timeout)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "SonoBus command failed")
+    return result.stdout.strip()
+
+
+def sonobus_state():
+    output = run_sonobus(["state"], timeout=5)
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        payload = {}
+        for line in output.splitlines():
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            if value in {"true", "false"}:
+                payload[key] = value == "true"
+            elif value in {"1.0", "0.0"} and key.endswith(("Muted", "Solo")):
+                payload[key] = value == "1.0"
+            else:
+                payload[key] = value
+    profiles = sonobus_profiles()
+    payload["profiles"] = {
+        identifier: {
+            "name": profile.get("name", identifier),
+            "username": profile.get("username", ""),
+            "group": profile.get("group", ""),
+            "passwordRequired": bool(profile.get("password", "") or profile.get("passwordRequired", False)),
+        }
+        for identifier, profile in profiles["profiles"].items()
+    }
+    payload["selectedProfile"] = profiles.get("selected", "")
+    running = sonobus_running()
+    payload["sonobusRunning"] = running
+
+    try:
+        airplay = mediactl_object(["airplay-state-json"], timeout=5)
+        airplay_connected = bool(airplay.get("connected", False))
+        payload["airplayAvailable"] = True
+        payload["airplayConnected"] = airplay_connected
+        payload["airplayName"] = str(airplay.get("name") or "")
+        payload["airplayUID"] = str(airplay.get("uid") or "")
+    except RuntimeError as error:
+        airplay_connected = None
+        payload["airplayAvailable"] = False
+        payload["airplayConnected"] = None
+        payload["airplayName"] = ""
+        payload["airplayUID"] = ""
+        payload["airplayError"] = str(error)
+
+    saved_preset = routing_state().get("activePreset", "")
+    active_preset = ""
+    preset = SONOBUS_PRESETS.get(saved_preset)
+    if preset is not None:
+        receive_matches = bool(preset["receive"]) == running
+        airplay_matches = (
+            airplay_connected is None
+            or bool(preset["airplay"]) == airplay_connected
+        )
+        if receive_matches and airplay_matches:
+            active_preset = saved_preset
+    payload["activePreset"] = active_preset
+    payload["savedPreset"] = saved_preset
+    return payload
+
+
+def apply_sonobus(profile, state, password=None, launch=True):
+    args = ["apply", "--username", profile.get("username", "iPad4817"), "--group", profile.get("group", "")]
+    if password is not None:
+        args += ["--password", password]
+    args += [
+        "--send-muted", "on" if state["sendMuted"] else "off",
+        "--receive-muted", "on" if state["receiveMuted"] else "off",
+        "--input-muted", "on" if state["inputMuted"] else "off",
+        "--monitor-solo", "on" if state["monitorSolo"] else "off",
+        "--peer", state.get("peer", "rt4817"),
+        "--peer-format", "5",
+    ]
+    if launch:
+        args.append("--launch")
+    return run_sonobus(args)
+
+
+SONOBUS_PRESETS = {
+    # Every iPad-source route sends to the laptop through the saved
+    # default AirPlay receiver so audio always passes through convolution.
+    "ipad-local": {"airplay": True, "receive": True},
+    "ipad-laptop": {"airplay": True, "receive": False},
+    "ipad-both": {"airplay": True, "receive": True},
+    "ipad-external": {"airplay": True, "receive": False},
+    "laptop-ipad": {"airplay": False, "receive": True},
+    "laptop-local": {"airplay": False, "receive": False},
+    "laptop-both": {"airplay": False, "receive": True},
+    "laptop-external": {"airplay": False, "receive": False},
+}
+
+
+def routing_state():
+    try:
+        value = json.loads(ROUTING_STATE.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_routing_state(name):
+    _atomic_json(ROUTING_STATE, {"activePreset": name})
+
+
+def executable(name):
+    found = shutil.which(name)
+    if found:
+        return found
+    for root in ("/var/jb/usr/bin", "/var/jb/usr/local/bin", "/usr/bin", "/bin"):
+        item = Path(root) / name
+        if item.is_file() and os.access(item, os.X_OK):
+            return str(item)
+    return None
+
+
+def sonobus_running():
+    command = executable("ps")
+    if command is None:
+        return False
+    try:
+        result = subprocess.run(
+            [command, "-A"],
+            capture_output=True,
+            text=True,
+            timeout=4,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return any(
+        line.split() and line.split()[-1].rsplit("/", 1)[-1] == "SonoBus"
+        for line in result.stdout.splitlines()
+    )
+
+
+def stop_sonobus():
+    if not sonobus_running():
+        return
+    command = executable("killall")
+    if command:
+        subprocess.run([command, "SonoBus"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=4, check=False)
+
+
+def restart_sonobus():
+    stop_sonobus()
+    time.sleep(0.8)
+    command = executable("uiopen")
+    if not command:
+        raise RuntimeError("uiopen was not found")
+    subprocess.Popen([command, "sonobus://"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_data(self, status, content_type, data):
         self.send_response(status)
@@ -4565,6 +4831,15 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+
+        if path == "/api/sonobus/state":
+            try:
+                with SONOBUS_LOCK:
+                    state = sonobus_state()
+                self.send_json(200, state)
+            except Exception as error:
+                self.send_json(500, {"ok": False, "error": str(error)})
+            return
 
         if path == "/api/system/now-playing":
             self.mediactl_json(["system-now-playing-json"])
@@ -4737,6 +5012,76 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
 
 
+
+        if path == "/api/sonobus/restart":
+            try:
+                restart_sonobus()
+                self.send_json(200, {"ok": True, "message": "SonoBus restarted"})
+            except Exception as error:
+                self.send_json(500, {"ok": False, "error": str(error)})
+            return
+        if path.startswith("/api/sonobus/"):
+            try:
+                payload = self.read_json_body()
+                with SONOBUS_LOCK:
+                    store = sonobus_profiles()
+                    profiles = store["profiles"]
+                    selected = store.get("selected", "default")
+                    if path == "/api/sonobus/profile/save":
+                        name = str(payload.get("name") or "").strip()
+                        group = str(payload.get("group") or "").strip()
+                        username = str(payload.get("username") or "iPad4817").strip()
+                        if not name or not group:
+                            raise ValueError("Profile name and group are required")
+                        identifier = str(uuid.uuid4())
+                        profiles[identifier] = {
+                            "name": name,
+                            "username": username,
+                            "group": group,
+                            "password": str(payload.get("password") or ""),
+                        }
+                        store["selected"] = identifier
+                        _atomic_json(SONOBUS_PROFILES, store)
+                        message = "Default group profile saved"
+                    elif path == "/api/sonobus/profile/select":
+                        identifier = str(payload.get("id") or "")
+                        if identifier not in profiles:
+                            raise ValueError("Unknown group profile")
+                        store["selected"] = identifier
+                        _atomic_json(SONOBUS_PROFILES, store)
+                        message = "Group profile selected"
+                    elif path == "/api/sonobus/profile/delete":
+                        identifier = str(payload.get("id") or "")
+                        if identifier == "default":
+                            raise ValueError("The default profile cannot be deleted")
+                        profiles.pop(identifier, None)
+                        if store.get("selected") == identifier:
+                            store["selected"] = "default"
+                        _atomic_json(SONOBUS_PROFILES, store)
+                        message = "Group profile deleted"
+                    elif path == "/api/sonobus/preset":
+                        preset_name = str(payload.get("preset") or "")
+                        if preset_name not in SONOBUS_PRESETS:
+                            raise ValueError("Unknown routing preset")
+                        preset = SONOBUS_PRESETS[preset_name]
+                        profile = profiles[selected]
+                        running = sonobus_running()
+                        if preset["receive"] and not running:
+                            apply_sonobus(profile, {"sendMuted": True, "receiveMuted": False, "inputMuted": True, "monitorSolo": False}, password=str(profile.get("password") or ""))
+                        elif not preset["receive"] and running:
+                            stop_sonobus()
+                        command = ["airplay-connect-default"] if preset["airplay"] else ["airplay-disconnect"]
+                        result = execute(command)
+                        if result.returncode != 0:
+                            raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "AirPlay routing failed")
+                        save_routing_state(preset_name)
+                        message = "Routing preset applied"
+                    else:
+                        raise ValueError("Unknown SonoBus action")
+                self.send_json(200, {"ok": True, "message": message, "state": sonobus_state()})
+            except (ValueError, RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
+                self.send_json(400, {"ok": False, "error": str(error)})
+            return
 
         if path in {
             "/api/system/play",

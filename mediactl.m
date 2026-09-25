@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <MediaPlayer/MediaPlayer.h>
+#import <AVFoundation/AVFoundation.h>
 #import <dispatch/dispatch.h>
 #import <dlfcn.h>
 #import <math.h>
@@ -143,6 +144,7 @@ static void printUsage(void) {
         "  mediactl wake-screen\n"
         "  mediactl home-screen\n"
         "  mediactl airplay-connect-default\n"
+        "  mediactl airplay-state-json\n"
         "  mediactl airplay-devices-json\n"
         "  mediactl airplay-show-picker\n"
         "  mediactl airplay-connect <uid> [name]\n"
@@ -1445,6 +1447,42 @@ defaultAirPlayName(void) {
     }
 
     return name;
+}
+
+
+static int printAirPlayStateJSON(void) {
+    AVAudioSessionRouteDescription *route =
+        AVAudioSession.sharedInstance.currentRoute;
+    NSMutableArray *outputs = [NSMutableArray array];
+    BOOL connected = NO;
+    NSString *activeName = @"";
+    NSString *activeUID = @"";
+
+    for (AVAudioSessionPortDescription *output in route.outputs) {
+        NSString *type = output.portType ?: @"";
+        NSString *name = output.portName ?: @"";
+        NSString *uid = output.UID ?: @"";
+        BOOL isAirPlay = [type isEqualToString:AVAudioSessionPortAirPlay];
+        if (isAirPlay) {
+            connected = YES;
+            activeName = name;
+            activeUID = uid;
+        }
+        [outputs addObject:@{
+            @"name": name,
+            @"uid": uid,
+            @"type": type,
+            @"airplay": @(isAirPlay)
+        }];
+    }
+
+    printJSONObject(@{
+        @"connected": @(connected),
+        @"name": activeName,
+        @"uid": activeUID,
+        @"outputs": outputs
+    });
+    return 0;
 }
 
 
@@ -3358,6 +3396,14 @@ int main(int argc, char *argv[]) {
                     @"airplay-show-picker"]
         ) {
             return showNativeAirPlayPicker();
+        }
+
+        if (
+            [argument
+                isEqualToString:
+                    @"airplay-state-json"]
+        ) {
+            return printAirPlayStateJSON();
         }
 
         if (
