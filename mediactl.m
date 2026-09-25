@@ -1495,12 +1495,14 @@ static int printAirPlayStateJSON(void) {
         NSString *uid = airPlayDeviceString(device, @"uid");
         BOOL local = airPlayDeviceIsLocal(device);
         [outputs addObject:@{@"name": name ?: @"", @"uid": uid ?: @"", @"local": @(local)}];
-        if (!local && uid.length > 0) {
+        if (!local) {
             [names addObject:name.length > 0 ? name : @"AirPlay"];
-            [uids addObject:uid];
+            if (uid.length > 0) {
+                [uids addObject:uid];
+            }
         }
     }
-    BOOL connected = uids.count > 0;
+    BOOL connected = names.count > 0;
     printJSONObject(@{
         @"connected": @(connected),
         @"name": connected ? [names componentsJoinedByString:@" + "] : @"",

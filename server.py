@@ -4610,26 +4610,35 @@ def sonobus_state():
     running = sonobus_running()
     payload["sonobusRunning"] = running
 
+    # Read the current route from the iPad on every state refresh. The
+    # selected destination remains independent and is still loaded from
+    # routing-state.json.
+    try:
+        airplay = mediactl_object(["airplay-state-json"], timeout=5)
+        payload["airplayAvailable"] = True
+        payload["airplayConnected"] = bool(
+            airplay.get("connected", False)
+        )
+        payload["airplayName"] = str(
+            airplay.get("name") or ""
+        )
+        payload["airplayUID"] = str(
+            airplay.get("uid") or ""
+        )
+        payload["airplaySource"] = str(
+            airplay.get("source") or ""
+        )
+    except RuntimeError as error:
+        payload["airplayAvailable"] = False
+        payload["airplayConnected"] = None
+        payload["airplayName"] = ""
+        payload["airplayUID"] = ""
+        payload["airplaySource"] = ""
+        payload["airplayError"] = str(error)
     saved_preset = routing_state().get("activePreset", "")
-    active_preset = (
+    payload["activePreset"] = (
         saved_preset if saved_preset in SONOBUS_PRESETS else ""
     )
-    # The badge reflects the successfully applied destination command.
-    # The live state reader reports Speaker from this server process even
-    # while Music is connected, so it must not overwrite the route result.
-    airplay_connected = bool(
-        active_preset
-        and SONOBUS_PRESETS[active_preset]["airplay"]
-    )
-    payload["airplayAvailable"] = True
-    payload["airplayConnected"] = airplay_connected
-    payload["airplayName"] = "rt4817" if airplay_connected else ""
-    payload["airplayUID"] = (
-        "07b32858-19ad-447c-898c-13d7f0ea07fe"
-        if airplay_connected
-        else ""
-    )
-    payload["activePreset"] = active_preset
     payload["savedPreset"] = saved_preset
     return payload
 
