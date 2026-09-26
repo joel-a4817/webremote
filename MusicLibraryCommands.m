@@ -306,6 +306,61 @@ int MLCCreatePlaylist(
 }
 
 
+
+static BOOL MLCCopyPlaylistItems(MPMediaPlaylist *source, MPMediaPlaylist *destination, NSError **error) {
+    NSArray *items = source.items ?: @[];
+    if (items.count == 0) return YES;
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    __block NSError *operationError = nil;
+    [destination addMediaItems:items completionHandler:^(NSError *value) { operationError = value; dispatch_semaphore_signal(semaphore); }];
+    if (dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC)) != 0) {
+        if (error) *error = [NSError errorWithDomain:@"MediaCtlPlaylist" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Timed out copying playlist songs"}];
+        return NO;
+    }
+    if (operationError != nil) { if (error) *error = operationError; return NO; }
+    return YES;
+}
+static MPMediaPlaylist *MLCCreateAndVerifyPlaylist(MPMediaLibrary *library, NSString *name) {
+    MPMediaPlaylist *playlist = [library addPlaylistWithName:name];
+    if (playlist != nil) return playlist;
+    for (NSUInteger attempt = 0; attempt < 30; attempt++) { usleep(100000); playlist = MLCFindPlaylist(name); if (playlist != nil) return playlist; }
+    return nil;
+}
+int MLCRenamePlaylist(NSString *oldName, NSString *newName) {
+    if (!MLCValidPlaylistName(oldName) || !MLCValidPlaylistName(newName)) { fprintf(stderr, "Invalid playlist name\n"); return 2; }
+    NSCharacterSet *whitespace = NSCharacterSet.whitespaceAndNewlineCharacterSet;
+    oldName = [oldName stringByTrimmingCharactersInSet:whitespace];
+    newName = [newName stringByTrimmingCharactersInSet:whitespace];
+    MPMediaPlaylist *source = MLCFindPlaylist(oldName);
+    if (source == nil) { fprintf(stderr, "Playlist not found: %s\n", oldName.UTF8String); return 1; }
+    if ([oldName isEqualToString:newName]) { MLCPrintJSON(@{@"oldName":oldName,@"name":MLCPlaylistName(source),@"renamed":@YES,@"changed":@NO}); return 0; }
+    BOOL caseOnlyRename = [oldName caseInsensitiveCompare:newName] == NSOrderedSame;
+    if (!caseOnlyRename && MLCFindPlaylist(newName) != nil) { fprintf(stderr, "A playlist named %s already exists\n", newName.UTF8String); return 1; }
+    MPMediaLibrary *library = [MPMediaLibrary defaultMediaLibrary];
+    if (library == nil || ![library respondsToSelector:@selector(addPlaylistWithName:)] || ![library respondsToSelector:@selector(removePlaylist:)]) { fprintf(stderr, "Playlist editing selectors are unavailable\n"); return 1; }
+    NSString *workingName = caseOnlyRename ? [NSString stringWithFormat:@"MediaCtl Rename %@", NSUUID.UUID.UUIDString] : newName;
+    MPMediaPlaylist *working = MLCCreateAndVerifyPlaylist(library, workingName);
+    if (working == nil) { fprintf(stderr, "Apple Music rejected the replacement playlist creation\n"); return 1; }
+    NSError *copyError = nil;
+    if (!MLCCopyPlaylistItems(source, working, &copyError)) { [library removePlaylist:working]; fprintf(stderr, "%s\n", copyError.localizedDescription.UTF8String); return 1; }
+    if (![library removePlaylist:source]) { [library removePlaylist:working]; fprintf(stderr, "Apple Music rejected removal of the old playlist\n"); return 1; }
+    if (caseOnlyRename) {
+        for (NSUInteger attempt = 0; attempt < 50 && MLCFindPlaylist(oldName) != nil; attempt++) usleep(100000);
+        MPMediaPlaylist *finalPlaylist = MLCCreateAndVerifyPlaylist(library, newName);
+        if (finalPlaylist == nil) { fprintf(stderr, "Apple Music rejected the final playlist name\n"); return 1; }
+        copyError = nil;
+        if (!MLCCopyPlaylistItems(working, finalPlaylist, &copyError)) { [library removePlaylist:finalPlaylist]; fprintf(stderr, "%s\n", copyError.localizedDescription.UTF8String); return 1; }
+        if (![library removePlaylist:working]) { fprintf(stderr, "The playlist was renamed, but temporary cleanup failed\n"); return 1; }
+    }
+    for (NSUInteger attempt = 0; attempt < 60; attempt++) {
+        usleep(100000);
+        MPMediaPlaylist *visibleNew = MLCFindPlaylist(newName);
+        MPMediaPlaylist *visibleOld = MLCFindPlaylist(oldName);
+        if (visibleNew != nil && (caseOnlyRename || visibleOld == nil)) { MLCPrintJSON(@{@"oldName":oldName,@"name":MLCPlaylistName(visibleNew),@"renamed":@YES,@"changed":@YES,@"count":@(visibleNew.items.count)}); return 0; }
+    }
+    fprintf(stderr, "Playlist rename was submitted but could not be verified\n"); return 1;
+}
+
 int MLCRemovePlaylist(
     NSString *playlistName
 ) {

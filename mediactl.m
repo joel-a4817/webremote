@@ -119,6 +119,7 @@ static void printUsage(void) {
         "  mediactl authorize\n"
         "  mediactl playlists\n"
         "  mediactl playlist-create \"Playlist Name\"\n"
+        "  mediactl playlist-rename \"Old Name\" \"New Name\"\n"
         "  mediactl playlist-remove \"Playlist Name\"\n"
         "  mediactl playlists-json\n"
         "  mediactl playlist \"Playlist Name\"\n"
@@ -3254,6 +3255,20 @@ int main(int argc, char *argv[]) {
             );
         }
 
+        if ([argument isEqualToString:@"playlist-rename"]) {
+            if (argc < 4) {
+                fprintf(stderr, "Usage: mediactl playlist-rename \"Old Name\" \"New Name\"\n");
+                return 2;
+            }
+            if (requireMediaLibraryAuthorization() != 0) return 1;
+            NSString *oldName = stringArgument(argv[2]);
+            NSString *newName = joinArguments(argc, argv, 3);
+            if (oldName == nil || newName.length == 0) {
+                fprintf(stderr, "Invalid playlist rename request\n");
+                return 2;
+            }
+            return MLCRenamePlaylist(oldName, newName);
+        }
         if (
             [argument
                 isEqualToString:
