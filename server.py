@@ -189,6 +189,10 @@ h1 {
   text-transform: uppercase;
 }
 
+/* Artwork is confined to the Apple Music card. */
+.apple-now-playing-header { display:flex; align-items:center; gap:14px; min-width:0; }
+.apple-now-playing-copy { flex:1; min-width:0; }
+#apple-now-playing-artwork { flex:0 0 72px; width:72px; height:72px; border-radius:15px; font-size:32px; }
 #current-title {
   font-size: 22px;
   font-weight: 750;
@@ -423,12 +427,43 @@ button:active {
   gap: 11px;
 }
 
-.playlist-row {
+.playlist-row { position: relative; min-width: 0; }
+.playlist-row .playlist-button { width: 100%; min-height: 80px; padding-right: 122px; }
+.playlist-row .playlist-copy { min-width: 0; overflow-wrap: anywhere; }
+.playlist-row .playlist-play-button,
+.playlist-row .shuffle-button {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
   display: grid;
-  grid-template-columns:
-    minmax(0, 1fr) 72px 72px;
-  gap: 9px;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 14px;
+  transform: translateY(-50%);
+  -webkit-appearance: none;
+  appearance: none;
 }
+.playlist-row .playlist-play-button { right: 64px; background: rgba(255, 255, 255, .17); }
+.playlist-row .shuffle-button { right: 12px; background: linear-gradient(135deg, #fa2d55, #8b5cff); }
+.playlist-row .playlist-play-button:active,
+.playlist-row .shuffle-button:active { transform: translateY(-50%) scale(.96); }
+.playlist-action-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.playlist-action-icon .play-glyph { fill: currentColor; stroke: none; }
 
 .playlist-button,
 .song-button {
@@ -666,41 +701,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
 
 
 /* Playlist and queue-control styles. */
-.playlist-play-button,
-.shuffle-button {
-  width: 72px;
-  min-width: 72px;
-  min-height: 68px;
-  padding: 8px 5px;
-  border-radius: 19px;
-  -webkit-appearance: none;
-  appearance: none;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif !important;
-  font-size: 13px !important;
-  font-style: normal !important;
-  font-weight: 750 !important;
-  line-height: 1.15 !important;
-  letter-spacing: normal !important;
-  text-align: center;
-  text-transform: none !important;
-  white-space: nowrap;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-.playlist-play-button {
-  background: rgba(255, 255, 255, .16);
-}
-
-.shuffle-button {
-  background:
-    linear-gradient(
-      135deg,
-      #fa2d55,
-      #8b5cff
-    );
-}
-
 .queue-mode-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1038,6 +1038,80 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
 .batch-toolbar button { min-height:42px; }
 .batch-select { width:24px; height:24px; flex:0 0 auto; accent-color:#64b5ff; }
 .batch-selected { background:rgba(100,181,255,.1); border-color:rgba(100,181,255,.45); }
+
+/* Library artwork. A missing cover remains a deliberate, clean tile. */
+.song-management-row { grid-template-columns: 34px minmax(0, 1fr) 52px; align-items: center; }
+.song-management-row .batch-select { margin: auto; }
+.song-button.has-artwork, .playlist-button.has-artwork {
+  display: flex; align-items: center; gap: 12px;
+}
+.song-copy, .playlist-copy { min-width: 0; flex: 1; }
+.song-artwork {
+  flex: 0 0 48px; width: 48px; height: 48px;
+  position: relative; display: grid; place-items: center; overflow: hidden;
+  border-radius: 11px; background: linear-gradient(145deg, #433b68, #222d42);
+  color: #c8c1e9; font-size: 24px; line-height: 1;
+}
+.song-artwork::before { content: '♫'; }
+.song-artwork img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+.playlist-artwork { flex-basis: 54px; width: 54px; height: 54px; }
+.playlist-candidate-row { grid-template-columns: 30px 48px minmax(0, 1fr); }
+#song-manage-artwork { width: 80px; height: 80px; margin: 0 auto 14px; border-radius: 16px; font-size: 34px; }
+/* Webremote UI spacing, volume glyphs, and back-to-top */
+.volume-slider-row {
+  grid-template-columns: 22px minmax(0, 1fr) 22px;
+  gap: 10px;
+  width: 100%;
+  margin-left: 0;
+}
+.volume-icon { display: grid; place-items: center; }
+.volume-icon svg { width: 19px; height: 19px; display: block; fill: none;
+  stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;
+  stroke-linejoin: round; }
+#song-list, #all-song-list, #playlist-add-list { margin-top: 14px; }
+#global-song-results:empty { display: none; }
+#playlist-list { margin-top: 12px; }
+#back-to-top {
+  position: fixed;
+  z-index: 100;
+  top: calc(env(safe-area-inset-top) + 68px);
+  right: max(18px, env(safe-area-inset-right));
+  width: auto;
+  max-width: calc(100vw - 36px);
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255,255,255,.24);
+  border-radius: 999px;
+  background: #32254d;
+  box-shadow: 0 8px 28px rgba(0,0,0,.42);
+  font-size: 14px;
+  font-weight: 700;
+}
+/* Final song-list consistency pass */
+#song-list .song-title, #all-song-list .song-title {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  font-size: 17px; font-weight: 700; line-height: 1.3;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+}
+#song-list .song-artist, #all-song-list .song-artist {
+  font-size: 13px; font-weight: 400; line-height: 1.35;
+  -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+}
+/* Webremote Apple Music submenu navigation */
+.music-menu-launch {
+  display: block;
+  min-height: 58px;
+  margin: 20px 0 0;
+  padding: 12px 18px;
+  border-radius: 19px;
+  background: linear-gradient(135deg, #7b5cff, #3d73dc);
+  font-size: 17px;
+  font-weight: 750;
+}
+#music-screen .header-row { margin-bottom: 22px; }
+#music-screen .section-heading:first-of-type { margin-top: 0; }
+#main-screen > .section-heading:first-of-type { margin-top: 8px; }
+#main-screen > .system-controls { margin-top: 12px; }
 </style>
 </head>
 
@@ -1047,11 +1121,105 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
     <h1>iPad Music Remote</h1>
     <div id="upload-complete-panel" class="upload-complete-panel hidden" aria-live="polite"></div>
 
+    <div class="section-heading"><div><div class="section-title">System Media</div><div class="section-subtitle">Control the active Control Centre media session</div></div></div>
+    <div class="system-media-card">
+      <div class="system-media-heading"><div class="system-media-copy"><div id="system-current-title" class="system-media-title">Loading…</div><div id="system-current-details" class="system-media-details"></div></div><span class="system-media-badge">System</span></div>
+      <div class="system-media-controls">
+        <button class="system-transport" type="button" data-system-command="previous" aria-label="Previous system track"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14"></path><path d="M18 6.5 8.5 12 18 17.5z"></path></svg></button>
+        <button class="system-transport" id="system-toggle" type="button" data-system-command="toggle" aria-label="Play system media"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="icon-fill" d="M8 5.5 19 12 8 18.5z"></path></svg></button>
+        <button class="system-transport" type="button" data-system-command="next" aria-label="Next system track"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"></path><path d="M6 6.5 15.5 12 6 17.5z"></path></svg></button>
+      </div>
+      <div class="system-progress"><input id="system-playback-seek" type="range" min="0" max="0" step="0.1" value="0" disabled aria-label="System playback position"><div class="playback-times"><span id="system-playback-elapsed">0:00</span><span id="system-playback-duration">0:00</span></div></div>
+    </div>
+    <button id="open-music-menu" class="music-menu-launch" type="button" aria-controls="music-screen">
+      Apple Music
+    </button>
+    <section id="sonobus-home" class="sonobus-card">
+      <div class="sonobus-head"><div><div class="sonobus-kicker">SonoBus & Home Routing</div><h2>Audio destinations</h2></div><span id="sonobus-state-badge">Loading</span></div>
+      <div class="sonobus-section-label">Playing from iPad</div>
+      <div class="sonobus-grid four">
+        <button data-sonobus-preset="ipad-local">iPad</button><button data-sonobus-preset="ipad-laptop">Laptop</button><button data-sonobus-preset="ipad-both">Both</button><button data-sonobus-preset="ipad-external">External</button>
+      </div>
+      <div class="sonobus-section-label">Playing from laptop</div>
+      <div class="sonobus-grid four">
+        <button data-sonobus-preset="laptop-ipad">iPad</button><button data-sonobus-preset="laptop-local">Laptop</button><button data-sonobus-preset="laptop-both">Both</button><button data-sonobus-preset="laptop-external">External</button>
+      </div>
+      <div class="sonobus-grid sonobus-manage">
+        <button id="sonobus-groups-open">Group Profiles</button>
+      </div>
+    </section>
+    <div class="section-heading"><div><div class="section-title">AirPlay &amp; Device</div><div class="section-subtitle">Choose an output, restart Music or wake the iPad</div></div></div>
+    <div class="system-controls">
+
+      <button
+        id="connect-airplay"
+        class="system-button"
+        type="button"
+      >
+        Connect AirPlay
+      </button>
+
+      <button
+        id="airplay-devices"
+        class="system-button"
+        type="button"
+      >
+        AirPlay Devices
+      </button>
+
+      <button
+        id="disconnect-airplay"
+        class="system-button"
+        type="button"
+      >
+        Disconnect AirPlay
+      </button>
+
+      <button
+        id="restart-music"
+        class="system-button"
+        type="button"
+      >
+        Restart Music
+      </button>
+      <button id="restart-sonobus" class="system-button" type="button">Restart SonoBus</button>
+      <button
+        id="home-device"
+        class="system-button"
+        type="button"
+      >
+        Wake iPad
+      </button>
+    </div>
+
+
+    <section id="sonobus-groups" class="sonobus-card hidden">
+      <div class="sonobus-head"><h2>Group Profiles</h2><button class="sonobus-close" data-sonobus-close>Done</button></div>
+      <div id="sonobus-profile-list"></div>
+      <div class="sonobus-form">
+        <input id="sonobus-profile-name" placeholder="Profile name"><input id="sonobus-username" placeholder="Username" value="iPad4817">
+        <input id="sonobus-group" placeholder="Group name"><input id="sonobus-password" type="password" autocomplete="new-password" placeholder="Password, if required">
+        <button id="sonobus-profile-save">Save profile</button>
+      </div>
+    </section>
+
+  </section>
+
+  <section id="music-screen" class="hidden">
+    <div class="header-row">
+      <button id="music-menu-back" class="back" type="button">Back</button>
+      <h1>Apple Music</h1><div></div>
+    </div>
     <div class="section-heading"><div><div class="section-title">Apple Music</div><div class="section-subtitle">Library playback, queue modes and volume</div></div></div>
     <div class="now-playing">
       <div class="now-label">Now Playing</div>
-      <div id="current-title">Loading…</div>
-      <div id="current-details"></div>
+      <div class="apple-now-playing-header">
+        <span id="apple-now-playing-artwork" class="song-artwork" aria-hidden="true"></span>
+        <div class="apple-now-playing-copy">
+          <div id="current-title">Loading…</div>
+          <div id="current-details"></div>
+        </div>
+      </div>
 
       <div class="playback-progress">
         <input
@@ -1073,10 +1241,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
 
       <div class="volume-control">
         <div class="volume-slider-row">
-          <span
-            class="volume-icon"
-            aria-hidden="true"
-          >🔈</span>
+          <span class="volume-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4z"/></svg></span>
 
           <input
             id="volume-slider"
@@ -1088,10 +1253,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
             aria-label="iPad volume"
           >
 
-          <span
-            class="volume-icon"
-            aria-hidden="true"
-          >🔊</span>
+          <span class="volume-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 4V6l-5 4H3z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M19 6a8 8 0 0 1 0 12"/></svg></span>
         </div>
 
 
@@ -1165,16 +1327,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
       </button>
     </div>
 
-    <div class="section-heading"><div><div class="section-title">System Media</div><div class="section-subtitle">Control the active Control Centre media session</div></div></div>
-    <div class="system-media-card">
-      <div class="system-media-heading"><div class="system-media-copy"><div id="system-current-title" class="system-media-title">Loading…</div><div id="system-current-details" class="system-media-details"></div></div><span class="system-media-badge">System</span></div>
-      <div class="system-media-controls">
-        <button class="system-transport" type="button" data-system-command="previous" aria-label="Previous system track"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14"></path><path d="M18 6.5 8.5 12 18 17.5z"></path></svg></button>
-        <button class="system-transport" id="system-toggle" type="button" data-system-command="toggle" aria-label="Play system media"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="icon-fill" d="M8 5.5 19 12 8 18.5z"></path></svg></button>
-        <button class="system-transport" type="button" data-system-command="next" aria-label="Next system track"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"></path><path d="M6 6.5 15.5 12 6 17.5z"></path></svg></button>
-      </div>
-      <div class="system-progress"><input id="system-playback-seek" type="range" min="0" max="0" step="0.1" value="0" disabled aria-label="System playback position"><div class="playback-times"><span id="system-playback-elapsed">0:00</span><span id="system-playback-duration">0:00</span></div></div>
-    </div>
     <div class="section-heading"><div><div class="section-title">Music Library</div><div class="section-subtitle">Browse songs or import new music</div></div></div>
     <div class="library-launchers">
       <button id="open-all-songs" type="button">All Songs</button>
@@ -1194,75 +1346,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
       id="playlist-list"
       class="list"
     ></div>
-    <div class="section-heading"><div><div class="section-title">AirPlay &amp; Device</div><div class="section-subtitle">Choose an output, restart Music or wake the iPad</div></div></div>
-    <div class="system-controls">
-
-      <button
-        id="connect-airplay"
-        class="system-button"
-        type="button"
-      >
-        Connect AirPlay
-      </button>
-
-      <button
-        id="airplay-devices"
-        class="system-button"
-        type="button"
-      >
-        AirPlay Devices
-      </button>
-
-      <button
-        id="restart-music"
-        class="system-button"
-        type="button"
-      >
-        Restart Music
-      </button>
-
-      <button
-        id="disconnect-airplay"
-        class="system-button"
-        type="button"
-      >
-        Disconnect AirPlay
-      </button>
-      <button id="restart-sonobus" class="system-button" type="button">Restart SonoBus</button>
-      <button
-        id="home-device"
-        class="system-button"
-        type="button"
-      >
-        Wake iPad
-      </button>
-    </div>
-
-
-    <section id="sonobus-home" class="sonobus-card">
-      <div class="sonobus-head"><div><div class="sonobus-kicker">SonoBus & Home Routing</div><h2>Audio destinations</h2></div><span id="sonobus-state-badge">Loading</span></div>
-      <div class="sonobus-section-label">Playing from iPad</div>
-      <div class="sonobus-grid four">
-        <button data-sonobus-preset="ipad-local">iPad</button><button data-sonobus-preset="ipad-laptop">Laptop</button><button data-sonobus-preset="ipad-both">Both</button><button data-sonobus-preset="ipad-external">External</button>
-      </div>
-      <div class="sonobus-section-label">Playing from laptop</div>
-      <div class="sonobus-grid four">
-        <button data-sonobus-preset="laptop-ipad">iPad</button><button data-sonobus-preset="laptop-local">Laptop</button><button data-sonobus-preset="laptop-both">Both</button><button data-sonobus-preset="laptop-external">External</button>
-      </div>
-      <div class="sonobus-grid sonobus-manage">
-        <button id="sonobus-groups-open">Group Profiles</button>
-      </div>
-    </section>
-    <section id="sonobus-groups" class="sonobus-card hidden">
-      <div class="sonobus-head"><h2>Group Profiles</h2><button class="sonobus-close" data-sonobus-close>Done</button></div>
-      <div id="sonobus-profile-list"></div>
-      <div class="sonobus-form">
-        <input id="sonobus-profile-name" placeholder="Profile name"><input id="sonobus-username" placeholder="Username" value="iPad4817">
-        <input id="sonobus-group" placeholder="Group name"><input id="sonobus-password" type="password" autocomplete="new-password" placeholder="Password, if required">
-        <button id="sonobus-profile-save">Save profile</button>
-      </div>
-    </section>
-
   </section>
 
   <section
@@ -1377,6 +1460,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
       <h1 id="song-manage-title">Song</h1><div></div>
     </div>
     <div class="membership-card">
+      <div id="song-manage-artwork" class="song-artwork" aria-hidden="true">♫</div>
       <div id="song-manage-details" class="song-artist"></div>
       <div id="song-playlist-checks" class="playlist-checks"></div>
       <button id="remove-from-library" class="destructive" type="button">Remove from Library</button>
@@ -1455,10 +1539,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
 
   
 </main>
+<button id="back-to-top" class="hidden" type="button" aria-label="Go back to top of page">Back to top ↑</button>
 
 <script>
 const mainScreen =
   document.querySelector("#main-screen");
+const musicScreen = document.querySelector("#music-screen");
 
 const playlistScreen =
   document.querySelector("#playlist-screen");
@@ -1480,6 +1566,21 @@ const currentTitle =
 
 const currentDetails =
   document.querySelector("#current-details");
+const appleNowPlayingArtwork = document.querySelector("#apple-now-playing-artwork");
+let appleNowPlayingArtworkID = "";
+function updateAppleNowPlayingArtwork(id) {
+  const nextID = id && /^\d+$/.test(String(id)) ? String(id) : "";
+  if (nextID === appleNowPlayingArtworkID) return;
+  appleNowPlayingArtworkID = nextID;
+  appleNowPlayingArtwork.replaceChildren();
+  if (!nextID) return;
+  const image = document.createElement("img");
+  image.alt = "";
+  image.decoding = "async";
+  image.addEventListener("error", () => image.remove(), {once: true});
+  image.src = "/api/song/artwork?id=" + encodeURIComponent(nextID);
+  appleNowPlayingArtwork.appendChild(image);
+}
 const playbackSeek =
   document.querySelector(
     "#playback-seek"
@@ -1789,7 +1890,7 @@ async function sendLiveSeek(
     );
 
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
 
   } finally {
     liveSeekInFlight = false;
@@ -1851,7 +1952,7 @@ async function commitPlaybackSeek() {
     );
 
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
 
   } finally {
     seekInteractionActive = false;
@@ -1980,7 +2081,7 @@ async function loadVolumeState() {
     volumeSlider.disabled = false;
   } catch (error) {
     if (error.name !== "AbortError") {
-      setStatus(error.message);
+      showTaskFeedback(error.message, 'error');
     }
   } finally {
     if (volumePollAbortController === controller) {
@@ -2018,7 +2119,7 @@ async function sendVolume(value) {
       }
     );
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   } finally {
     volumeWriteInFlight = false;
 
@@ -2143,7 +2244,7 @@ async function loadShuffleMode() {
     );
     renderShuffleMode(result.enabled);
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   } finally {
     shuffleReadInFlight = false;
   }
@@ -2170,7 +2271,7 @@ shuffleQueueButton.addEventListener(
       renderShuffleMode(result.enabled);
       setTimeout(loadShuffleMode, 300);
     } catch (error) {
-      setStatus(error.message);
+      showTaskFeedback(error.message, 'error');
     } finally {
       shuffleToggleInFlight = false;
       shuffleQueueButton.classList.remove("control-busy");
@@ -2232,7 +2333,7 @@ async function loadRepeatMode() {
     );
     renderRepeatMode(result.mode);
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   } finally {
     repeatReadInFlight = false;
   }
@@ -2260,7 +2361,7 @@ repeatModeButton.addEventListener(
       renderRepeatMode(result.mode);
       setTimeout(loadRepeatMode, 200);
     } catch (error) {
-      setStatus(error.message);
+      showTaskFeedback(error.message, 'error');
     } finally {
       repeatToggleInFlight = false;
       repeatModeButton.classList.remove("control-busy");
@@ -2322,12 +2423,9 @@ function showTaskFeedback(message, kind='working') {
 
 function setStatus(text) {
   const message = String(text || '');
-  if (!message) return;
-  const lower = message.toLowerCase();
-  const kind = /error|failed|invalid|timed out|could not|not found/.test(lower)
-    ? 'error'
-    : (/complete|completed|removed|added|saved|restarted|connected|disconnected|updated|created/.test(lower) ? 'done' : 'working');
-  showTaskFeedback(message, kind);
+  if (/error|failed|invalid|timed out|could not|not found|unavailable/i.test(message)) {
+    showTaskFeedback(message, 'error');
+  }
 }
 window.addEventListener('error', event => {
   showTaskFeedback(event?.error?.message || event?.message || 'Unexpected interface error', 'error');
@@ -2378,7 +2476,7 @@ async function updateNowPlaying() {
         "Nothing playing";
 
       currentDetails.textContent = "";
-
+      updateAppleNowPlayingArtwork("");
       setToggleState(false);
       updateSeekDisplay(0, 0);
 
@@ -2386,7 +2484,7 @@ async function updateNowPlaying() {
     }
 
     setToggleState(data.playing);
-
+    updateAppleNowPlayingArtwork(data.id);
     currentTitle.textContent =
       data.title || "Unknown title";
 
@@ -2407,6 +2505,7 @@ async function updateNowPlaying() {
       "Now Playing unavailable";
 
     currentDetails.textContent = "";
+    updateAppleNowPlayingArtwork("");
 
     setToggleState(false);
     updateSeekDisplay(0, 0);
@@ -2459,7 +2558,7 @@ async function sendSystemCommand(command) {
     await readJSON("/api/system/" + command, {method: "POST"});
     setStatus("System command sent");
     setTimeout(updateSystemNowPlaying, 200);
-  } catch (error) { setStatus(error.message); }
+  } catch (error) { showTaskFeedback(error.message, 'error'); }
 }
 async function sendSystemSeek() {
   if (systemSeekTimer !== null) clearTimeout(systemSeekTimer);
@@ -2470,7 +2569,7 @@ async function sendSystemSeek() {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({seconds: Number(systemPlaybackSeek.value)})
     });
-  } catch (error) { setStatus(error.message); }
+  } catch (error) { showTaskFeedback(error.message, 'error'); }
   finally { systemSeekActive = false; setTimeout(updateSystemNowPlaying, 150); }
 }
 systemPlaybackSeek.addEventListener("pointerdown", () => { systemSeekActive = true; });
@@ -2504,7 +2603,7 @@ async function sendTransport(command) {
 
 
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   }
 }
 
@@ -2523,7 +2622,8 @@ async function runSystemAction(
 
   button.disabled = true;
   button.textContent = workingLabel;
-  showTaskFeedback(workingLabel, 'working');
+  const showProgress = endpoint === '/api/music/restart';
+  if (showProgress) showTaskFeedback(workingLabel, 'working');
 
   try {
     const result =
@@ -2534,9 +2634,7 @@ async function runSystemAction(
         }
       );
 
-    setStatus(
-      result.message || successLabel
-    );
+    if (showProgress) showTaskFeedback(result.message || successLabel, 'done');
 
     setTimeout(
       updateNowPlaying,
@@ -2544,7 +2642,7 @@ async function runSystemAction(
     );
 
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
 
   } finally {
     button.disabled = false;
@@ -2556,7 +2654,6 @@ async function runSystemAction(
 async function connectAirPlayDevice(
   device
 ) {
-  showTaskFeedback('Connecting to ' + device.name + '…', 'working');
   try {
     const result =
       await readJSON(
@@ -2581,9 +2678,7 @@ async function connectAirPlayDevice(
     );
 
   } catch (error) {
-    setStatus(
-      error.message
-    );
+    showTaskFeedback(error.message, 'error');
   }
 }
 
@@ -2591,7 +2686,6 @@ async function connectAirPlayDevice(
 async function setDefaultAirPlayDevice(
   device
 ) {
-  showTaskFeedback('Saving default AirPlay device…', 'working');
   try {
     const result =
       await readJSON(
@@ -2615,18 +2709,16 @@ async function setDefaultAirPlayDevice(
       + device.name
     );
 
-    await loadAirPlayDevices();
-
+    await loadAirPlayDevices(true);
   } catch (error) {
-    setStatus(
-      error.message
-    );
+    showTaskFeedback(error.message, 'error');
   }
 }
 
 
-async function loadAirPlayDevices() {
+async function loadAirPlayDevices(silent=false) {
   airPlayList.innerHTML = "";
+  if (!silent) showTaskFeedback('Discovering AirPlay devices…', 'working');
 
   try {
     const result =
@@ -2642,6 +2734,7 @@ async function loadAirPlayDevices() {
     if (
       devices.length === 0
     ) {
+      if (!silent) showTaskFeedback('No external AirPlay devices found', 'done');
       airPlayList.textContent =
         "No external AirPlay devices are "
         + "currently exposed by Music. "
@@ -2761,11 +2854,10 @@ async function loadAirPlayDevices() {
         card
       );
     }
+    if (!silent) showTaskFeedback('AirPlay devices loaded', 'done');
 
   } catch (error) {
-    setStatus(
-      error.message
-    );
+    showTaskFeedback(error.message, 'error');
   }
 }
 
@@ -2787,7 +2879,7 @@ async function playPlaylistOrdered(name) {
     setStatus("Playing " + name);
     setTimeout(updateNowPlaying, 400);
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   }
 }
 
@@ -2817,8 +2909,24 @@ async function shufflePlaylist(name) {
     );
 
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   }
+}
+
+function makeArtwork(id, playlist=false) {
+  const tile = document.createElement('span');
+  tile.className = 'song-artwork' + (playlist ? ' playlist-artwork' : '');
+  tile.setAttribute('aria-hidden', 'true');
+  if (id && /^\d+$/.test(String(id))) {
+    const image = document.createElement('img');
+    image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.addEventListener('error', () => image.remove(), {once: true});
+    image.src = '/api/song/artwork?id=' + encodeURIComponent(String(id));
+    tile.appendChild(image);
+  }
+  return tile;
 }
 
 async function loadPlaylists() {
@@ -2876,10 +2984,11 @@ async function loadPlaylists() {
             : " songs"
         );
 
-      openButton.append(
-        name,
-        count
-      );
+      const playlistCopy = document.createElement('span');
+      playlistCopy.className = 'playlist-copy';
+      playlistCopy.append(name, count);
+      openButton.classList.add('has-artwork');
+      openButton.append(makeArtwork(playlist.coverID, true), playlistCopy);
 
       openButton.addEventListener(
         "click",
@@ -2893,7 +3002,7 @@ async function loadPlaylists() {
       plainPlayButton.className =
         "playlist-play-button";
       plainPlayButton.type = "button";
-      plainPlayButton.textContent = "Play";
+      plainPlayButton.innerHTML = '<svg class="playlist-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path class="play-glyph" d="M8 5.5 19 12 8 18.5z"/></svg>';
       plainPlayButton.setAttribute(
         "aria-label",
         "Play " + playlist.name
@@ -2911,7 +3020,7 @@ async function loadPlaylists() {
         "shuffle-button";
       shuffleButton.type = "button";
 
-      shuffleButton.textContent = "Shuffle";
+      shuffleButton.innerHTML = '<svg class="playlist-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h2c5 0 7 10 12 10h2"/><path d="m17 14 3 3-3 3"/><path d="M4 17h2c2.1 0 3.6-1.8 5-4"/><path d="M14 8c1.1-.7 2.4-1 4-1h2"/><path d="m17 4 3 3-3 3"/></svg>';
 
       shuffleButton.setAttribute(
         "aria-label",
@@ -2935,7 +3044,7 @@ async function loadPlaylists() {
     }
 
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   }
 }
 
@@ -2948,10 +3057,8 @@ async function openPlaylist(name) {
   currentPlaylistName = name;
   playlistTitle.textContent = name;
 
-  mainScreen.classList.add("hidden");
-  playlistScreen.classList.remove("hidden");
+  showOnly(playlistScreen);
 
-  setStatus("Loading playlist…");
 
   try {
     const data =
@@ -2960,7 +3067,6 @@ async function openPlaylist(name) {
         encodeURIComponent(name)
       );
 
-    showTaskFeedback('Playlist loaded', 'done');
 
     const songs =
       Array.isArray(data.songs)
@@ -2981,6 +3087,7 @@ async function openPlaylist(name) {
 
       row.className =
         "playlist-song-row";
+      row.dataset.songId = String(song.id);
 
       const membership =
         document.createElement("label");
@@ -3048,7 +3155,7 @@ async function openPlaylist(name) {
           } catch (error) {
             checkbox.checked = true;
             checkbox.disabled = false;
-            setStatus(error.message);
+            showTaskFeedback(error.message, 'error');
           }
         }
       );
@@ -3085,10 +3192,11 @@ async function openPlaylist(name) {
         song.album
       ].filter(Boolean).join(" • ");
 
-      button.append(
-        title,
-        artist
-      );
+      const songCopy = document.createElement('span');
+      songCopy.className = 'song-copy';
+      songCopy.append(title, artist);
+      button.classList.add('has-artwork');
+      button.append(makeArtwork(song.id), songCopy);
 
       button.addEventListener(
         "click",
@@ -3123,7 +3231,7 @@ async function openPlaylist(name) {
             );
 
           } catch (error) {
-            setStatus(error.message);
+            showTaskFeedback(error.message, 'error');
           }
         }
       );
@@ -3137,7 +3245,7 @@ async function openPlaylist(name) {
     }
 
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   }
 }
 
@@ -3146,13 +3254,7 @@ document
   .addEventListener(
     "click",
     () => {
-      playlistScreen
-        .classList
-        .add("hidden");
-
-      mainScreen
-        .classList
-        .remove("hidden");
+      showOnly(musicScreen);
 
       updateNowPlaying();
     }
@@ -3319,6 +3421,7 @@ musicFiles.addEventListener('change', () => {
 function showOnly(screen) {
   for (const section of [
     mainScreen,
+    musicScreen,
     playlistScreen,
     airPlayScreen,
     allSongsScreen,
@@ -3330,6 +3433,14 @@ function showOnly(screen) {
   }
 }
 
+document.querySelector('#open-music-menu').addEventListener('click', () => {
+  showOnly(musicScreen);
+  window.scrollTo({top: 0, behavior: 'auto'});
+});
+document.querySelector('#music-menu-back').addEventListener('click', () => {
+  showOnly(mainScreen);
+  window.scrollTo({top: 0, behavior: 'auto'});
+});
 function completeOnHome(message) {
   showOnly(mainScreen);
   window.scrollTo({top: 0, behavior: 'smooth'});
@@ -3342,10 +3453,15 @@ var allSongsSelectedSongs = new Map();
 function createSongManagementRow(song) {
   const row = document.createElement('div');
   row.className = 'song-management-row';
+  row.dataset.songId = String(song.id);
   const play = document.createElement('button');
   play.className = 'song-button';
   play.type = 'button';
-  play.innerHTML = '<span class="song-title"></span><span class="song-artist"></span>';
+  play.classList.add('has-artwork');
+  const songCopy = document.createElement('span');
+  songCopy.className = 'song-copy';
+  songCopy.innerHTML = '<span class="song-title"></span><span class="song-artist"></span>';
+  play.append(makeArtwork(song.id), songCopy);
   play.querySelector('.song-title').textContent = song.title || 'Unknown title';
   play.querySelector('.song-artist').textContent = [song.artist, song.album].filter(Boolean).join(' • ');
   play.addEventListener('click', async () => {
@@ -3353,7 +3469,7 @@ function createSongManagementRow(song) {
       await readJSON('/api/song/play', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:song.id})});
       setStatus('Playing ' + (song.title || 'selected song'));
       setTimeout(updateNowPlaying, 350);
-    } catch (error) { setStatus(error.message); }
+    } catch (error) { showTaskFeedback(error.message, 'error'); }
   });
   const menu = document.createElement('button');
   menu.className = 'song-menu-button';
@@ -3368,28 +3484,38 @@ function createSongManagementRow(song) {
 function renderAllSongs() {
   const query = normalizeSearchText(globalSongSearch.value.trim());
   allSongList.innerHTML = '';
-  const matches = allSongs.filter(song => normalizeSearchText([song.title, song.artist, song.album].filter(Boolean).join(' ')).includes(query));
+  const matches = allSongs.filter(song => (song._webremoteSearchText || '').includes(query));
+  const fragment = document.createDocumentFragment();
   globalSongResults.textContent = matches.length ? '' : 'No matching songs';
   for (const song of matches) {
     const row = createSongManagementRow(song);
     row.prepend(selectionCheckbox(song, allSongsSelectedSongs, row));
-    allSongList.appendChild(row);
+    fragment.appendChild(row);
   }
+  allSongList.appendChild(fragment);
 }
 
 async function loadAllSongs() {
   const response = await readJSON('/api/songs');
   allSongs = Array.isArray(response.songs) ? response.songs : [];
+  for (const song of allSongs) {
+    song._webremoteSearchText = normalizeSearchText(
+      [song.title, song.artist, song.album].filter(Boolean).join(' '));
+  }
   renderAllSongs();
 }
 
-globalSongSearch.addEventListener('input', renderAllSongs);
+let allSongsSearchTimer = null;
+globalSongSearch.addEventListener('input', () => {
+  clearTimeout(allSongsSearchTimer);
+  allSongsSearchTimer = setTimeout(renderAllSongs, 120);
+});
 
 document.querySelector('#open-all-songs').addEventListener('click', async () => {
   showOnly(allSongsScreen);
-  try { await loadAllSongs(); } catch (error) { setStatus(error.message); }
+  try { await loadAllSongs(); } catch (error) { showTaskFeedback(error.message, 'error'); }
 });
-document.querySelector('#all-songs-back').addEventListener('click', () => showOnly(mainScreen));
+document.querySelector('#all-songs-back').addEventListener('click', () => showOnly(musicScreen));
 
 document.querySelector('#open-upload').addEventListener('click', () => {
   showOnly(uploadScreen);
@@ -3403,7 +3529,7 @@ document.querySelector('#open-upload').addEventListener('click', () => {
     uploadPlaylistChecks.appendChild(label);
   }
 });
-document.querySelector('#upload-back').addEventListener('click', () => showOnly(mainScreen));
+document.querySelector('#upload-back').addEventListener('click', () => showOnly(musicScreen));
 
 const uploadSubmitButton = document.querySelector('#upload-submit');
 
@@ -3454,13 +3580,13 @@ async function waitForMusicImportJob(jobID) {
     uploadSubmitButton.textContent = total > 0 && done > 0
       ? label + ' ' + done + ' / ' + total
       : label;
-    setStatus(total > 0 && done > 0 ? label + ' ' + done + ' of ' + total : label);
+    showTaskFeedback(total > 0 && done > 0 ? label + ' ' + done + ' of ' + total : label, 'working');
   }
 }
 
 document.querySelector('#upload-submit').addEventListener('click', async () => {
   if (!selectedUploadFiles.length) {
-    setStatus('Choose at least one audio file');
+    showTaskFeedback('Choose at least one audio file', 'error');
     return;
   }
 
@@ -3595,9 +3721,9 @@ document.querySelector('#upload-submit').addEventListener('click', async () => {
 
 async function openSongManager(song) {
   selectedManagedSong = song;
-  showTaskFeedback('Loading song and playlist details…', 'working');
   document.querySelector('#song-manage-title').textContent = song.title || 'Song';
   document.querySelector('#song-manage-details').textContent = [song.artist, song.album].filter(Boolean).join(' • ');
+  document.querySelector('#song-manage-artwork').replaceWith(Object.assign(makeArtwork(song.id), {id: 'song-manage-artwork'}));
   songPlaylistChecks.innerHTML = 'Loading…';
   showOnly(songManageScreen);
   try {
@@ -3614,7 +3740,7 @@ async function openSongManager(song) {
         input.disabled = true;
         try {
           await readJSON('/api/song/playlist', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:song.id, playlist:playlist.name, included:input.checked})});
-        } catch (error) { input.checked = !input.checked; setStatus(error.message); }
+        } catch (error) { input.checked = !input.checked; showTaskFeedback(error.message, 'error'); }
         finally { input.disabled = false; }
       });
       songPlaylistChecks.appendChild(label);
@@ -3632,7 +3758,7 @@ document.querySelector('#remove-from-library').addEventListener('click', async (
   button.textContent = 'Removing…';
 
   try {
-    setStatus('Removing "' + (selectedManagedSong.title || 'selected song') + '" from the library…');
+    showTaskFeedback('Removing song from the library…', 'working');
     await readJSON('/api/song/library', {
       method: 'DELETE',
       headers: {'Content-Type': 'application/json'},
@@ -3644,7 +3770,7 @@ document.querySelector('#remove-from-library').addEventListener('click', async (
     await loadPlaylists();
     completeOnHome('Removed "' + removedTitle + '" from the Apple Music library.');
   } catch (error) {
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   } finally {
     button.disabled = false;
     button.textContent = 'Remove from Library';
@@ -3747,10 +3873,7 @@ function renderPlaylistAddCandidates() {
       artist
     );
 
-    label.append(
-      input,
-      details
-    );
+    label.append(input, makeArtwork(song.id), details);
 
     playlistAddList.appendChild(label);
   }
@@ -3763,7 +3886,6 @@ async function openPlaylistAddSongs() {
 
   playlistAddSearch.value = "";
   playlistAddList.textContent = "Loading…";
-  showTaskFeedback('Loading songs available for this playlist…', 'working');
 
   document.querySelector(
     "#playlist-add-title"
@@ -3814,6 +3936,7 @@ async function openPlaylistAddSongs() {
   } catch (error) {
     playlistAddList.textContent =
       error.message;
+    showTaskFeedback(error.message, 'error');
   }
 }
 
@@ -3849,7 +3972,7 @@ playlistAddSelectedButton.addEventListener(
     ].map(input => input.value);
 
     if (identifiers.length === 0) {
-      setStatus("Select at least one song");
+      showTaskFeedback("Select at least one song", "error");
       return;
     }
 
@@ -3860,6 +3983,7 @@ playlistAddSelectedButton.addEventListener(
     button.textContent = "Adding…";
 
     const failed = [];
+    if (identifiers.length > 1) showTaskFeedback('Adding ' + identifiers.length + ' songs to playlist…', 'working');
 
     try {
       for (const identifier of identifiers) {
@@ -3912,7 +4036,15 @@ playlistAddSelectedButton.addEventListener(
           + addedCount + ' added, ' + failed.length + ' failed.'
         : 'Added ' + addedCount + ' song' + (addedCount === 1 ? '' : 's')
           + ' to "' + playlistName + '".';
-      completeOnHome(completionMessage);
+      if (failed.length) {
+        showOnly(mainScreen);
+        showTaskFeedback(completionMessage + ' ' + failed[0], 'error');
+      } else if (identifiers.length > 1) {
+        completeOnHome(completionMessage);
+      } else {
+        showOnly(mainScreen);
+        window.scrollTo({top: 0, behavior: 'smooth'});
+      }
 
     } catch (error) {
       /*
@@ -3923,9 +4055,7 @@ playlistAddSelectedButton.addEventListener(
         playlistAddScreen
       );
 
-      setStatus(
-        error.message
-      );
+      showTaskFeedback(error.message, 'error');
 
     } finally {
       button.disabled = false;
@@ -3977,7 +4107,7 @@ document.querySelector(
       );
 
     } catch (error) {
-      setStatus(error.message);
+      showTaskFeedback(error.message, 'error');
     }
   }
 );
@@ -3995,7 +4125,6 @@ document.querySelector("#playlist-rename").addEventListener(
       return;
     }
     if (newName === oldName) {
-      showTaskFeedback("The playlist name is unchanged", "done");
       return;
     }
     const button = document.querySelector("#playlist-rename");
@@ -4050,7 +4179,7 @@ document.querySelector(
 
     button.disabled = true;
     button.textContent = "Removing…";
-    setStatus('Removing playlist "' + name + '"… Songs will remain in the library.');
+    showTaskFeedback('Removing playlist "' + name + '"…', 'working');
 
     try {
       await readJSON(
@@ -4076,7 +4205,7 @@ document.querySelector(
       );
 
     } catch (error) {
-      setStatus(error.message);
+      showTaskFeedback(error.message, 'error');
 
     } finally {
       button.disabled = false;
@@ -4126,7 +4255,7 @@ function setVisibleSelection(container, store, checked) {
 
 async function runSongBatch(action, store, playlist='') {
   const ids = [...store.keys()];
-  if (!ids.length) { setStatus('Select at least one song'); return false; }
+  if (!ids.length) { showTaskFeedback('Select at least one song', 'error'); return false; }
   const fromPlaylist = action === 'playlist-remove';
   const label = fromPlaylist ? 'remove selected songs from this playlist' : 'remove selected songs from the library';
   if (!confirm('Are you sure you want to ' + label + '?')) return false;
@@ -4140,10 +4269,11 @@ async function runSongBatch(action, store, playlist='') {
     button.disabled = true;
     button.textContent = fromPlaylist ? 'Removing from playlist…' : 'Removing from library…';
   }
-  setStatus(
+  showTaskFeedback(
     fromPlaylist
       ? 'Removing ' + ids.length + ' selected song' + (ids.length === 1 ? '' : 's') + ' from "' + playlist + '"…'
-      : 'Removing ' + ids.length + ' selected song' + (ids.length === 1 ? '' : 's') + ' from the library…'
+      : 'Removing ' + ids.length + ' selected song' + (ids.length === 1 ? '' : 's') + ' from the library…',
+    'working'
   );
   try {
     const response = await readJSON('/api/songs/batch', {
@@ -4152,7 +4282,19 @@ async function runSongBatch(action, store, playlist='') {
     });
     const failures = (response.results || []).filter(item => !item.ok);
     const succeeded = ids.length - failures.length;
-    store.clear();
+    const failedIDs = new Set(failures.map(item => String(item.id)));
+    for (const id of ids) {
+      if (!failedIDs.has(id)) store.delete(id);
+    }
+    if (failures.length) {
+      const container = fromPlaylist || store === playlistSelectedSongs ? songList : allSongList;
+      for (const row of container.querySelectorAll('[data-song-id]')) {
+        if (ids.includes(row.dataset.songId) && !failedIDs.has(row.dataset.songId)) row.remove();
+      }
+      showTaskFeedback('Removed ' + succeeded + ' of ' + ids.length + '. ' +
+        failures.length + ' failed: ' + (failures[0].error || 'Please retry selected songs.'), 'error');
+      return false;
+    }
     const completionMessage = failures.length
       ? 'Finished: ' + succeeded + ' completed, ' + failures.length + ' failed.'
       : (fromPlaylist
@@ -4177,9 +4319,7 @@ openPlaylist = async function(name) {
   playlistSelectAll.checked = false;
   await originalOpenPlaylist(name);
   for (const row of songList.querySelectorAll('.playlist-song-row')) {
-    const play = row.querySelector('.song-play-button, button');
-    const title = row.querySelector('.song-title')?.textContent || '';
-    const song = [...(window.__lastPlaylistSongs || [])].find(item => item.title === title);
+    const song = (window.__lastPlaylistSongs || []).find(item => String(item.id) === row.dataset.songId);
     if (!song) continue;
     const old = row.querySelector('.playlist-song-membership');
     if (old) old.remove();
@@ -4190,12 +4330,12 @@ openPlaylist = async function(name) {
 playlistSelectAll.addEventListener('change', () => setVisibleSelection(songList, playlistSelectedSongs, playlistSelectAll.checked));
 document.querySelector('#playlist-batch-remove').addEventListener('click', async () => {
   if (await runSongBatch('playlist-remove', playlistSelectedSongs, currentPlaylistName)) {
-    await originalOpenPlaylist(currentPlaylistName); await loadPlaylists();
+    await loadPlaylists();
   }
 });
 document.querySelector('#playlist-batch-library').addEventListener('click', async () => {
   if (await runSongBatch('library-remove', playlistSelectedSongs)) {
-    await originalOpenPlaylist(currentPlaylistName); await loadPlaylists();
+    await loadPlaylists();
   }
 });
 
@@ -4208,7 +4348,7 @@ const sonobusUI={state:null,busy:false};
 async function sonobusJSON(url,options){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),8000);try{const response=await fetch(url,{cache:'no-store',signal:controller.signal,...(options||{})});const data=await response.json();if(!response.ok||data.ok===false)throw new Error(data.error||'SonoBus request failed');return data}finally{clearTimeout(timer)}}
 function sonobusRender(state){sonobusUI.state=state;document.querySelectorAll('[data-sonobus-preset]').forEach(button=>{const selected=button.dataset.sonobusPreset===state.activePreset;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected))});const badge=document.querySelector('#sonobus-state-badge');if(badge){const sono=state.sonobusRunning?((state.group||'SonoBus')+' · Running'):'SonoBus stopped';const air=state.airplayAvailable?(state.airplayConnected?('AirPlay '+(state.airplayName||'connected')):'AirPlay off'):'AirPlay unknown';badge.textContent=sono+' · '+air}const list=document.querySelector('#sonobus-profile-list');if(list){list.innerHTML='';Object.entries(state.profiles||{}).forEach(([id,profile])=>{const row=document.createElement('div');row.className='sonobus-profile'+(id===state.selectedProfile?' selected':'');row.innerHTML='<div class="sonobus-profile-main"><div class="sonobus-profile-name"></div><div class="sonobus-profile-meta"></div></div><button data-use>Use</button><button data-delete>Delete</button>';row.querySelector('.sonobus-profile-name').textContent=profile.name||id;row.querySelector('.sonobus-profile-meta').textContent=(profile.username||'')+' · '+(profile.group||'');row.querySelector('[data-use]').onclick=()=>sonobusPost('/api/sonobus/profile/select',{id});row.querySelector('[data-delete]').onclick=()=>sonobusPost('/api/sonobus/profile/delete',{id});list.appendChild(row)})}}
 async function sonobusRefresh(){if(sonobusUI.busy||document.hidden)return;try{sonobusRender(await sonobusJSON('/api/sonobus/state'))}catch(error){setStatus(error.name==='AbortError'?'Route status timed out':error.message)}}
-async function sonobusPost(url,payload){if(sonobusUI.busy)return;sonobusUI.busy=true;try{const data=await sonobusJSON(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})});if(data.state)sonobusRender(data.state);setStatus(data.message||'Routing updated')}catch(error){setStatus(error.message)}finally{sonobusUI.busy=false;sonobusRefresh()}}
+async function sonobusPost(url,payload){if(sonobusUI.busy)return;sonobusUI.busy=true;try{const data=await sonobusJSON(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})});if(data.state)sonobusRender(data.state);if(url==='/api/sonobus/preset')showTaskFeedback(data.message||'Routing updated','done')}catch(error){showTaskFeedback(error.message, 'error')}finally{sonobusUI.busy=false;sonobusRefresh()}}
 document.querySelectorAll('[data-sonobus-preset]').forEach(button=>button.onclick=async()=>{
   if(sonobusUI.busy)return;
   const preset=button.dataset.sonobusPreset;
@@ -4217,7 +4357,7 @@ document.querySelectorAll('[data-sonobus-preset]').forEach(button=>button.onclic
     item.disabled=true;
   });
   button.setAttribute('aria-pressed','true');
-  setStatus('Applying '+button.textContent.trim()+' destination…');
+  showTaskFeedback('Applying '+button.textContent.trim()+' destination…', 'working');
   try{
     await sonobusPost('/api/sonobus/preset',{preset});
   }finally{
@@ -4237,7 +4377,7 @@ async function restartSonoBusWithFeedback(){
   restartSonoBusButton.classList.add('is-restarting');
   restartSonoBusButton.setAttribute('aria-busy','true');
   if(badge){badge.textContent='Restarting SonoBus…';badge.classList.add('is-restarting')}
-  setStatus('Restarting SonoBus…');
+  showTaskFeedback('Restarting SonoBus…', 'working');
   try{
     const data=await sonobusJSON('/api/sonobus/restart',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     let state=null;
@@ -4249,10 +4389,10 @@ async function restartSonoBusWithFeedback(){
       }catch(_error){}
     }
     if(state)sonobusRender(state);
-    setStatus(state&&state.sonobusRunning?'SonoBus restarted':'SonoBus restart sent');
+    showTaskFeedback(state&&state.sonobusRunning?'SonoBus restarted':'SonoBus restart sent', 'done');
   }catch(error){
     if(badge)badge.textContent=previousBadge||'SonoBus stopped';
-    setStatus(error.message);
+    showTaskFeedback(error.message, 'error');
   }finally{
     restartSonoBusButton.disabled=false;
     restartSonoBusButton.classList.remove('is-restarting');
@@ -4270,6 +4410,22 @@ async function refreshVisiblePage(){if(document.hidden)return;await Promise.allS
 function scheduleRouteStatePoll(generation){clearTimeout(routeStateTimer);if(document.hidden||generation!==pageRefreshGeneration)return;routeStateTimer=setTimeout(async()=>{await sonobusRefresh();scheduleRouteStatePoll(generation)},2500)}
 function startVisiblePolling(){pageRefreshGeneration+=1;const generation=pageRefreshGeneration;refreshVisiblePage();scheduleIPadStatePoll(generation);scheduleRouteStatePoll(generation)}
 document.addEventListener('visibilitychange',()=>{if(document.hidden){pageRefreshGeneration+=1;clearTimeout(ipadStateTimer);clearTimeout(routeStateTimer);return}loadPlaylists();startVisiblePolling()});
+// One floating control, visible only after scrolling in song lists.
+const backToTop = document.querySelector('#back-to-top');
+const backToTopScreens = [playlistScreen, document.querySelector('#all-songs-screen')];
+function updateBackToTop() {
+  const inSongList = backToTopScreens.some(screen => !screen.classList.contains('hidden'));
+  backToTop.classList.toggle('hidden', !inSongList || window.scrollY < 420);
+}
+window.addEventListener('scroll', updateBackToTop, {passive: true});
+for (const screen of backToTopScreens) {
+  new MutationObserver(updateBackToTop).observe(screen, {attributes: true, attributeFilter: ['class']});
+}
+backToTop.addEventListener('click', () => {
+  window.scrollTo({top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+});
+updateBackToTop();
+
 loadPlaylists();startVisiblePolling();
 </script>
 </body>
@@ -5334,37 +5490,6 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/system/now-playing":
             self.mediactl_json(["system-now-playing-json"])
             return
-        if path == "/api/songs/batch":
-            try:
-                payload = self.read_json_body()
-                identifiers = payload.get("ids", [])
-                action = payload.get("action", "")
-                playlist = str(payload.get("playlist") or "").strip()
-                if (
-                    not isinstance(identifiers, list)
-                    or not identifiers
-                    or not all(valid_song_identifier(str(value)) for value in identifiers)
-                    or action not in {"playlist-remove", "library-remove"}
-                    or (action == "playlist-remove" and not playlist)
-                ):
-                    raise ValueError("Invalid batch song request")
-                results = []
-                for value in identifiers:
-                    identifier = str(value)
-                    try:
-                        if action == "playlist-remove":
-                            result = execute(["song-remove-from-playlist", identifier, playlist])
-                            if result.returncode != 0:
-                                raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "Playlist removal failed")
-                        else:
-                            remove_song_from_library(identifier)
-                        results.append({"id": identifier, "ok": True})
-                    except Exception as error:
-                        results.append({"id": identifier, "ok": False, "error": str(error)})
-                self.send_json(200, {"ok": True, "results": results})
-            except (TypeError, ValueError, json.JSONDecodeError) as error:
-                self.send_json(400, {"ok": False, "error": str(error)})
-            return
         if path == "/api/volume":
             self.mediactl_json(
                 ["volume-json"]
@@ -5478,6 +5603,24 @@ class Handler(BaseHTTPRequestHandler):
             return
 
 
+        if path == "/api/song/artwork":
+            identifier = query.get("id", [""])[0]
+            if not valid_song_identifier(identifier):
+                self.send_data(404, "image/jpeg", b"")
+                return
+            try:
+                image = subprocess.run(
+                    [MEDIACTL, "song-artwork-jpeg", identifier],
+                    capture_output=True, timeout=12, check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                self.send_data(404, "image/jpeg", b"")
+                return
+            if image.returncode == 0 and image.stdout.startswith(b"\xff\xd8\xff"):
+                self.send_data(200, "image/jpeg", image.stdout)
+            else:
+                self.send_data(404, "image/jpeg", b"")
+            return
         if path == "/api/songs":
             self.mediactl_json(["songs-json"])
             return

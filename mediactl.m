@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <MediaPlayer/MediaPlayer.h>
+#import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <dispatch/dispatch.h>
 #import <dlfcn.h>
@@ -154,6 +155,7 @@ static void printUsage(void) {
         "  mediactl restart-music\n"
         "  mediactl resume\n"
         "  mediactl songs-json\n"
+        "  mediactl song-artwork-jpeg <persistent-id>\n"
         "  mediactl song-play <persistent-id>\n"
         "  mediactl song-playlists-json <persistent-id>\n"
         "  mediactl song-add-to-playlist <persistent-id> \"Playlist Name\"\n"
@@ -864,6 +866,26 @@ static int printNowPlayingJSON(void) {
     return 0;
 }
 
+// Emit only JPEG bytes on stdout. Exit 3 means this library item has no cover.
+static int printSongArtworkJPEG(unsigned long long requestedID) {
+    if (requireMediaLibraryAuthorization() != 0) return 1;
+    MPMediaQuery *query = [MPMediaQuery songsQuery];
+    MPMediaPropertyPredicate *predicate = [MPMediaPropertyPredicate
+        predicateWithValue:@(requestedID)
+        forProperty:MPMediaItemPropertyPersistentID];
+    [query addFilterPredicate:predicate];
+    MPMediaItem *item = query.items.firstObject;
+    if (item == nil) return 3;
+    MPMediaItemArtwork *artwork = [item valueForProperty:MPMediaItemPropertyArtwork];
+    if (artwork == nil) return 3;
+    UIImage *image = [artwork imageWithSize:CGSizeMake(128, 128)];
+    if (image == nil) return 3;
+    NSData *jpeg = UIImageJPEGRepresentation(image, 0.78);
+    if (jpeg.length == 0) return 3;
+    if (fwrite(jpeg.bytes, 1, jpeg.length, stdout) != jpeg.length) return 1;
+    return fflush(stdout) == 0 ? 0 : 1;
+}
+
 static int printPlaylistsJSON(void) {
     if (requireMediaLibraryAuthorization() != 0) {
         return 1;
@@ -891,9 +913,24 @@ static int printPlaylistsJSON(void) {
         [NSMutableArray array];
 
     for (MPMediaPlaylist *playlist in sorted) {
+        // Library-owned last-played metadata survives restarting this server.
+        MPMediaItem *latest = nil;
+        NSDate *latestDate = nil;
+        for (MPMediaItem *item in playlist.items) {
+            NSDate *played = [item valueForProperty:MPMediaItemPropertyLastPlayedDate];
+            if ([played isKindOfClass:[NSDate class]] &&
+                (latestDate == nil || [played compare:latestDate] == NSOrderedDescending)) {
+                latest = item;
+                latestDate = played;
+            }
+        }
+        // Never label a never-played track as "last played".
+        NSNumber *coverID = latest != nil
+            ? [latest valueForProperty:MPMediaItemPropertyPersistentID] : nil;
         [result addObject:@{
             @"name": playlistName(playlist),
-            @"count": @(playlist.items.count)
+            @"count": @(playlist.items.count),
+            @"coverID": coverID != nil ? coverID.stringValue : @""
         }];
     }
 
@@ -3034,6 +3071,15 @@ int main(int argc, char *argv[]) {
                 isEqualToString:@"playlists-json"]
         ) {
             return printPlaylistsJSON();
+        }
+
+        if ([argument isEqualToString:@"song-artwork-jpeg"]) {
+            unsigned long long requestedID = 0;
+            if (argc != 3 || !parsePersistentID(argv[2], &requestedID)) {
+                fprintf(stderr, "Usage: mediactl song-artwork-jpeg <persistent-id>\n");
+                return 2;
+            }
+            return printSongArtworkJPEG(requestedID);
         }
 
         if ([argument isEqualToString:@"songs-json"]) {
