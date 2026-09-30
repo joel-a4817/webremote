@@ -293,7 +293,7 @@ h1 {
   pointer-events: none;
 }
 
-#volume-slider {
+:is(#volume-slider, #system-volume-slider) {
   --volume-progress: 0%;
   display: block;
   width: 100%;
@@ -311,7 +311,7 @@ h1 {
   -webkit-user-select: none;
 }
 
-#volume-slider::-webkit-slider-runnable-track {
+:is(#volume-slider, #system-volume-slider)::-webkit-slider-runnable-track {
   height: 7px;
   border-radius: 999px;
   background: linear-gradient(
@@ -323,7 +323,7 @@ h1 {
   );
 }
 
-#volume-slider::-webkit-slider-thumb {
+:is(#volume-slider, #system-volume-slider)::-webkit-slider-thumb {
   width: 24px;
   height: 24px;
   margin-top: -9px;
@@ -335,7 +335,7 @@ h1 {
   -webkit-appearance: none;
 }
 
-#volume-slider:disabled {
+:is(#volume-slider, #system-volume-slider):disabled {
   opacity: .42;
 }
 
@@ -1130,6 +1130,13 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(143, 213, 25
         <button class="system-transport" type="button" data-system-command="next" aria-label="Next system track"><svg class="media-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"></path><path d="M6 6.5 15.5 12 6 17.5z"></path></svg></button>
       </div>
       <div class="system-progress"><input id="system-playback-seek" type="range" min="0" max="0" step="0.1" value="0" disabled aria-label="System playback position"><div class="playback-times"><span id="system-playback-elapsed">0:00</span><span id="system-playback-duration">0:00</span></div></div>
+      <div class="volume-control">
+        <div class="volume-slider-row">
+          <span class="volume-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4z"/></svg></span>
+          <input id="system-volume-slider" type="range" min="0" max="100" step="6.25" value="0" aria-label="iPad system volume">
+          <span class="volume-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 4V6l-5 4H3z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M19 6a8 8 0 0 1 0 12"/></svg></span>
+        </div>
+      </div>
     </div>
     <button id="open-music-menu" class="music-menu-launch" type="button" aria-controls="music-screen">
       Apple Music
@@ -1599,6 +1606,8 @@ const volumeSlider =
   document.querySelector(
     "#volume-slider"
   );
+const systemVolumeSlider = document.querySelector("#system-volume-slider");
+const volumeSliders = [volumeSlider, systemVolumeSlider];
 const repeatModeButton =
   document.querySelector(
     "#repeat-mode"
@@ -2021,11 +2030,10 @@ function clampVolume(value) {
 
 function drawVolume(value) {
   const percent = clampVolume(value);
-  volumeSlider.value = String(percent);
-  volumeSlider.style.setProperty(
-    "--volume-progress",
-    percent + "%"
-  );
+  for (const slider of volumeSliders) {
+    slider.value = String(percent);
+    slider.style.setProperty("--volume-progress", percent + "%");
+  }
 }
 
 function reportedIPadVolume(result) {
@@ -2078,7 +2086,7 @@ async function loadVolumeState() {
     drawVolume(
       reportedIPadVolume(result)
     );
-    volumeSlider.disabled = false;
+    for (const slider of volumeSliders) slider.disabled = false;
   } catch (error) {
     if (error.name !== "AbortError") {
       showTaskFeedback(error.message, 'error');
@@ -2135,10 +2143,8 @@ async function sendVolume(value) {
   }
 }
 
-function queueVolume() {
-  const requested = clampVolume(
-    volumeSlider.value
-  );
+function queueVolume(event) {
+  const requested = clampVolume(event.currentTarget.value);
 
   /* Native slider feedback is allowed only while the user interacts. */
   drawVolume(requested);
@@ -2166,7 +2172,7 @@ function beginVolumeDrag() {
   volumeDragActive = true;
 }
 
-function finishVolumeDrag() {
+function finishVolumeDrag(event) {
   if (!volumeDragActive) {
     return;
   }
@@ -2178,9 +2184,7 @@ function finishVolumeDrag() {
     volumeTimer = null;
   }
 
-  const finalValue = clampVolume(
-    volumeSlider.value
-  );
+  const finalValue = clampVolume(event.currentTarget.value);
 
   if (lastQueuedVolumeSent !== finalValue) {
     sendVolume(finalValue);
@@ -2189,32 +2193,14 @@ function finishVolumeDrag() {
   lastQueuedVolumeSent = null;
 }
 
-volumeSlider.addEventListener(
-  "pointerdown",
-  beginVolumeDrag
-);
-volumeSlider.addEventListener(
-  "touchstart",
-  beginVolumeDrag,
-  { passive: true }
-);
-volumeSlider.addEventListener(
-  "input",
-  queueVolume
-);
-volumeSlider.addEventListener(
-  "change",
-  finishVolumeDrag
-);
-volumeSlider.addEventListener(
-  "pointerup",
-  finishVolumeDrag
-);
-volumeSlider.addEventListener(
-  "touchend",
-  finishVolumeDrag
-);
-
+for (const slider of volumeSliders) {
+  slider.addEventListener("pointerdown", beginVolumeDrag);
+  slider.addEventListener("touchstart", beginVolumeDrag, {passive: true});
+  slider.addEventListener("input", queueVolume);
+  slider.addEventListener("change", finishVolumeDrag);
+  slider.addEventListener("pointerup", finishVolumeDrag);
+  slider.addEventListener("touchend", finishVolumeDrag);
+}
 function renderShuffleMode(enabled) {
   const active = Boolean(enabled);
   shuffleQueueButton.classList.toggle(
