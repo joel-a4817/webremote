@@ -1,0 +1,133 @@
+<section class="hidden" id="music-screen">
+ <div class="header-row">
+  <button class="back" id="music-menu-back" type="button">
+   Back
+  </button>
+  <h1>
+   Apple Music
+  </h1>
+  <div>
+  </div>
+ </div>
+ <div class="section-heading">
+  <div>
+   <div class="section-title">
+    Apple Music
+   </div>
+  </div>
+ </div>
+ <div class="now-playing">
+  <div class="now-label">
+   Now Playing
+  </div>
+  <div class="apple-now-playing-header">
+   <span aria-hidden="true" class="song-artwork" id="apple-now-playing-artwork">
+   </span>
+   <div class="apple-now-playing-copy">
+    <div id="current-title">
+     Loading&hellip;
+    </div>
+    <div id="current-details">
+    </div>
+   </div>
+  </div>
+  <div class="playback-progress">
+   <input aria-label="Playback position" disabled id="playback-seek" max="0" min="0" step="0.1" type="range" value="0">
+   <div class="playback-times">
+    <span id="playback-elapsed">
+     0:00
+    </span>
+    <span id="playback-duration">
+     0:00
+    </span>
+   </div>
+  </div>
+  <div class="volume-control">
+   <div class="volume-slider-row">
+    <span aria-hidden="true" class="volume-icon">
+     <svg viewbox="0 0 24 24">
+      <path d="M4 10v4h4l5 4V6l-5 4H4z">
+      </path>
+     </svg>
+    </span>
+    <input aria-label="iPad volume" id="volume-slider" max="100" min="0" step="6.25" type="range" value="0">
+    <span aria-hidden="true" class="volume-icon">
+     <svg viewbox="0 0 24 24">
+      <path d="M3 10v4h4l5 4V6l-5 4H3z">
+      </path>
+      <path d="M16 9a4 4 0 0 1 0 6">
+      </path>
+      <path d="M19 6a8 8 0 0 1 0 12">
+      </path>
+     </svg>
+    </span>
+   </div>
+   <div class="queue-mode-controls">
+    <button aria-label="Repeat mode off" id="repeat-mode" type="button">
+     Repeat Off
+    </button>
+    <button aria-label="Queue shuffle off" id="shuffle-queue" type="button">
+     Shuffle Off
+    </button>
+   </div>
+  </div>
+ </div>
+ <div class="controls">
+  <button aria-label="Previous track" class="transport" data-command="previous" type="button">
+   <svg aria-hidden="true" class="media-icon" viewbox="0 0 24 24">
+    <path d="M6 5v14">
+    </path>
+    <path d="M18 6.5 8.5 12 18 17.5z">
+    </path>
+   </svg>
+  </button>
+  <button aria-label="Back 10 seconds" class="transport seek-icon" data-seek-delta="-10" data-seek-target="apple" type="button">
+   &curvearrowleft;
+  </button>
+  <button aria-label="Play or pause" class="transport" data-command="toggle" id="toggle" type="button">
+   <svg aria-hidden="true" class="media-icon" viewbox="0 0 24 24">
+    <path class="icon-fill" d="M8 5.5 19 12 8 18.5z">
+    </path>
+   </svg>
+  </button>
+  <button aria-label="Forward 10 seconds" class="transport seek-icon" data-seek-delta="10" data-seek-target="apple" type="button">
+   &curvearrowright;
+  </button>
+  <button aria-label="Next track" class="transport" data-command="next" type="button">
+   <svg aria-hidden="true" class="media-icon" viewbox="0 0 24 24">
+    <path d="M18 5v14">
+    </path>
+    <path d="M6 6.5 15.5 12 6 17.5z">
+    </path>
+   </svg>
+  </button>
+ </div>
+ <div class="section-heading">
+  <div>
+   <div class="section-title">
+    Music Library
+   </div>
+  </div>
+ </div>
+ <div class="library-launchers">
+  <button id="open-all-songs" type="button">
+   All Songs
+  </button>
+  <button id="open-upload" type="button">
+   Upload Music
+  </button>
+ </div>
+ <div class="section-heading">
+  <div>
+   <div class="section-title">
+    Playlists
+   </div>
+  </div>
+ </div>
+ <button class="playlist-management-button" id="create-playlist" type="button">
+  New Playlist
+ </button>
+ <div class="list" id="playlist-list">
+ </div>
+</section>
+

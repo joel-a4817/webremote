@@ -1,0 +1,41 @@
+<section class="hidden" id="playlist-screen">
+ <div class="header-row">
+  <button class="back" id="back" type="button">
+   Back
+  </button>
+  <h1 id="playlist-title">
+   Playlist
+  </h1>
+  <div>
+  </div>
+ </div>
+ <div class="playlist-management-bar">
+  <button class="playlist-management-button" id="playlist-add-songs" type="button">
+   Add Songs
+  </button>
+  <button class="playlist-management-button" id="playlist-rename" type="button">
+   Rename Playlist
+  </button>
+  <button class="playlist-management-button" id="playlist-remove" type="button">
+   Remove Playlist
+  </button>
+ </div>
+ <div class="batch-toolbar">
+  <label>
+   <input id="playlist-select-all" type="checkbox">
+   Select all
+  </label>
+  <button id="playlist-batch-remove" type="button">
+   Remove selected from playlist
+  </button>
+  <button class="destructive" id="playlist-batch-library" type="button">
+   Remove selected from library
+  </button>
+ </div>
+ <input aria-label="Search songs in this playlist" autocomplete="off" class="search-box" id="playlist-song-search" inputmode="search" placeholder="Search this playlist" type="search">
+ <div aria-live="polite" class="search-message hidden" id="playlist-search-message">
+ </div>
+ <div class="list" id="song-list">
+ </div>
+</section>
+

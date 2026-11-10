@@ -1,0 +1,187 @@
+<section id="main-screen">
+ <h1>
+  iPad Music Remote
+ </h1>
+ <div class="theme-picker">
+  <button aria-expanded="false" aria-haspopup="true" id="theme-picker-button" type="button">
+   <span id="startup-theme-name">
+    Theme
+   </span>
+   <span aria-hidden="true">
+    ⌄
+   </span>
+  </button>
+  <div hidden id="theme-picker-menu" role="menu">
+   <div class="theme-options" id="built-in-theme-list">
+    <button data-theme="aurora" type="button">
+     Aurora Reef
+    </button>
+    <button data-theme="forest" type="button">
+     Forest Bloom
+    </button>
+    <button data-theme="ember" type="button">
+     Ember Coast
+    </button>
+    <button data-theme="violet" type="button">
+     Violet Nebula
+    </button>
+    <button data-theme="glacier" type="button">
+     Glacier Reef
+    </button>
+   </div>
+   <div aria-label="Saved themes" class="theme-options" id="saved-theme-list">
+   </div>
+   <div class="theme-create">
+    <button id="new-random-theme" type="button">
+     New random
+    </button>
+    <input aria-label="Theme name" id="theme-save-name" maxlength="32" placeholder="Theme name" type="text">
+    <button id="save-current-theme" type="button">
+     Save current
+    </button>
+   </div>
+  </div>
+ </div>
+ <div aria-live="polite" class="upload-complete-panel hidden" id="upload-complete-panel">
+ </div>
+ <div class="section-heading">
+  <div>
+   <div class="section-title">
+    System Media
+   </div>
+  </div>
+ </div>
+ <div class="system-media-card">
+  <div class="system-media-heading">
+   <div class="system-media-copy">
+    <div class="system-media-title" id="system-current-title">
+     Loading&hellip;
+    </div>
+    <div class="system-media-details" id="system-current-details">
+    </div>
+   </div>
+   <span class="system-media-badge">
+    System
+   </span>
+  </div>
+  <div class="system-media-controls">
+   <button aria-label="Previous system track" class="system-transport" data-system-command="previous" type="button">
+    <svg aria-hidden="true" class="media-icon" viewbox="0 0 24 24">
+     <path d="M6 5v14">
+     </path>
+     <path d="M18 6.5 8.5 12 18 17.5z">
+     </path>
+    </svg>
+   </button>
+   <button aria-label="Back 10 seconds" class="system-transport seek-icon" data-seek-delta="-10" data-seek-target="system" type="button">
+    &curvearrowleft;
+   </button>
+   <button aria-label="Play system media" class="system-transport" data-system-command="toggle" id="system-toggle" type="button">
+    <svg aria-hidden="true" class="media-icon" viewbox="0 0 24 24">
+     <path class="icon-fill" d="M8 5.5 19 12 8 18.5z">
+     </path>
+    </svg>
+   </button>
+   <button aria-label="Forward 10 seconds" class="system-transport seek-icon" data-seek-delta="10" data-seek-target="system" type="button">
+    &curvearrowright;
+   </button>
+   <button aria-label="Next system track" class="system-transport" data-system-command="next" type="button">
+    <svg aria-hidden="true" class="media-icon" viewbox="0 0 24 24">
+     <path d="M18 5v14">
+     </path>
+     <path d="M6 6.5 15.5 12 6 17.5z">
+     </path>
+    </svg>
+   </button>
+  </div>
+  <div class="system-progress">
+   <input aria-label="System playback position" disabled id="system-playback-seek" max="0" min="0" step="0.1" type="range" value="0">
+   <div class="playback-times">
+    <span id="system-playback-elapsed">
+     0:00
+    </span>
+    <span id="system-playback-duration">
+     0:00
+    </span>
+   </div>
+  </div>
+  <div class="volume-control">
+   <div class="volume-slider-row">
+    <span aria-hidden="true" class="volume-icon">
+     <svg viewbox="0 0 24 24">
+      <path d="M4 10v4h4l5 4V6l-5 4H4z">
+      </path>
+     </svg>
+    </span>
+    <input aria-label="iPad system volume" id="system-volume-slider" max="100" min="0" step="6.25" type="range" value="0">
+    <span aria-hidden="true" class="volume-icon">
+     <svg viewbox="0 0 24 24">
+      <path d="M3 10v4h4l5 4V6l-5 4H3z">
+      </path>
+      <path d="M16 9a4 4 0 0 1 0 6">
+      </path>
+      <path d="M19 6a8 8 0 0 1 0 12">
+      </path>
+     </svg>
+    </span>
+   </div>
+  </div>
+ </div>
+ <button aria-controls="music-screen" class="music-menu-launch" id="open-music-menu" type="button">
+  Apple Music
+ </button>
+ <section class="sonobus-card" id="sonobus-home">
+  <div class="sonobus-head">
+   <div>
+    <h2>
+     Audio destinations
+    </h2>
+   </div>
+   <span id="sonobus-state-badge">
+    Loading
+   </span>
+  </div>
+  <div class="sonobus-grid four">
+   <button data-sonobus-preset="listen" title="Receive external audio">
+    Listen
+   </button>
+   <button data-sonobus-preset="cast" title="Send this iPad audio">
+    Cast
+   </button>
+   <button data-sonobus-preset="relay" title="Send and receive">
+    Relay
+   </button>
+   <button data-sonobus-preset="local" title="This iPad only">
+    Local
+   </button>
+  </div>
+ </section>
+ <div class="section-heading">
+  <div>
+   <div class="section-title">
+    AirPlay & Device
+   </div>
+  </div>
+ </div>
+ <div class="system-controls">
+  <button class="system-button" id="connect-airplay" type="button">
+   Connect AirPlay
+  </button>
+  <button class="system-button" id="airplay-devices" type="button">
+   AirPlay Devices
+  </button>
+  <button class="system-button" id="disconnect-airplay" type="button">
+   Disconnect AirPlay
+  </button>
+  <button class="system-button" id="restart-music" type="button">
+   Restart Music
+  </button>
+  <button class="system-button" id="restart-sonobus" type="button">
+   Restart SonoBus
+  </button>
+  <button class="system-button" id="home-device" type="button">
+   Wake iPad
+  </button>
+ </div>
+</section>
+

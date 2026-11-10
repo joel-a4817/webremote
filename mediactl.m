@@ -484,8 +484,16 @@ static int seekSystemPlaybackTime(NSTimeInterval seconds) {
         dlclose(framework);
         return 1;
     }
+    /*
+     * MRMediaRemoteSetElapsedTime forwards the request asynchronously over
+     * MediaRemote. A short-lived CLI must remain alive long enough for that
+     * request to leave the process. The previous implementation exited and
+     * dlclosed MediaRemote immediately, so web requests reported success while
+     * many non-Music Now Playing applications never received the seek.
+     */
     setElapsed(seconds);
-    printJSONObject(@{@"currentTime": @(seconds)});
+    usleep(750000);
+    printJSONObject(@{@"currentTime": @(seconds), @"settled": @YES});
     dlclose(framework);
     return 0;
 }

@@ -7,6 +7,7 @@ include $(THEOS)/makefiles/common.mk
 TOOL_NAME = mediactl
 
 mediactl_FILES = mediactl.m MusicLibraryCommands.m MusicPlaylistRemoval.m
+mediactl_RESOURCE_FILES = Info.plist
 mediactl_FRAMEWORKS = Foundation MediaPlayer AVFoundation UIKit
 mediactl_CFLAGS = -fobjc-arc
 mediactl_CODESIGN_FLAGS = -Sentitlements.plist
